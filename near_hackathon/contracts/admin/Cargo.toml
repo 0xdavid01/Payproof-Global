@@ -1,0 +1,18 @@
+[package]
+name = "payproof-admin"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = "5.29"
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = ['cfg(near)']
+
+[dev-dependencies]
+near-sdk = { version = "5.29", features = ["unit-testing"] }
