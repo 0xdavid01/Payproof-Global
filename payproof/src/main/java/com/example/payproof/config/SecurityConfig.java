@@ -40,7 +40,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             AuthenticationProvider authenticationProvider,
-            SecurityContextRepository securityContextRepository
+            SecurityContextRepository securityContextRepository,
+            CookieCsrfTokenRepository csrfTokenRepository
     ) throws Exception {
 
         http
@@ -49,9 +50,7 @@ public class SecurityConfig {
                 ))
 
                 .csrf(csrf -> csrf
-                        .csrfTokenRepository(
-                                CookieCsrfTokenRepository.withHttpOnlyFalse()
-                        )
+                        .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(csrfTokenRequestHandler())
                         .ignoringRequestMatchers(
                                 "/api/auth/register",
@@ -94,6 +93,16 @@ public class SecurityConfig {
                 );
 
         return http.build();
+    }
+
+    @Bean
+    public CookieCsrfTokenRepository csrfTokenRepository() {
+        CookieCsrfTokenRepository repository =
+                CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repository.setCookieCustomizer(cookie -> cookie
+                .sameSite("None")
+                .secure(true));
+        return repository;
     }
 
     private void handleAuthenticationFailure(

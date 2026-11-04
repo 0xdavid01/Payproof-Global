@@ -18,36 +18,31 @@ const devLog = (...args) => {
   if (import.meta.env.DEV) console.info(...args);
 };
 
-function getCookie(name) {
-  const prefix = `${name}=`;
-  const cookie = document.cookie
-    .split("; ")
-    .find((item) => item.startsWith(prefix));
-
-  return cookie
-    ? decodeURIComponent(cookie.substring(prefix.length))
-    : null;
-}
-
 let csrfPromise = null;
 
 async function ensureCsrfToken() {
-  if (getCookie("XSRF-TOKEN")) return;
-
   if (!csrfPromise) {
-    csrfPromise = fetch(`${BACKEND_ORIGIN}/api/csrf`, {
-      method: "GET",
-      credentials: "include",
-    }).finally(() => {
+    csrfPromise = (async () => {
+      const response = await fetch(`${BACKEND_ORIGIN}/api/csrf`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new ApiError("Unable to obtain CSRF token", response.status, null);
+      }
+
+      const data = await response.json();
+      if (typeof data.token !== "string" || !data.token) {
+        throw new ApiError("Unable to obtain CSRF token", response.status, data);
+      }
+      return data.token;
+    })().finally(() => {
       csrfPromise = null;
     });
   }
 
-  const response = await csrfPromise;
-
-  if (!response.ok || !getCookie("XSRF-TOKEN")) {
-    throw new ApiError("Unable to obtain CSRF token", response.status, null);
-  }
+  return csrfPromise;
 }
 
 export async function request(
@@ -65,14 +60,7 @@ export async function request(
   }
 
   if (["POST", "PUT", "PATCH", "DELETE"].includes(upperMethod) && !csrfExempt) {
-    await ensureCsrfToken();
-
-    const csrfToken = getCookie("XSRF-TOKEN");
-
-    if (!csrfToken) {
-      throw new ApiError("CSRF token is missing", 403, null);
-    }
-
+    const csrfToken = await ensureCsrfToken();
     headers["X-XSRF-TOKEN"] = csrfToken;
   }
 

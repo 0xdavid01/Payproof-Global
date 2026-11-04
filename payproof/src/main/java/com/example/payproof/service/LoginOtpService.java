@@ -1,16 +1,13 @@
 package com.example.payproof.service;
 
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
 import jakarta.servlet.http.HttpSession;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.MailException;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
@@ -20,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 
 @Service
+@Slf4j
 public class LoginOtpService {
 
     private static final String EMAIL_KEY = "loginOtp.email";
@@ -36,20 +34,14 @@ public class LoginOtpService {
     private static final Duration CHALLENGE_LIFETIME = Duration.ofMinutes(15);
     private static final Duration RESEND_COOLDOWN = Duration.ofSeconds(60);
 
-    private final JavaMailSender mailSender;
+    private final ResendEmailService emailService;
     private final PasswordEncoder passwordEncoder;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    @Value("${spring.mail.username:}")
-    private String senderAddress;
-
-    @Value("${spring.mail.password:}")
-    private String senderPassword;
-
     public LoginOtpService(
-            JavaMailSender mailSender,
+            ResendEmailService emailService,
             PasswordEncoder passwordEncoder) {
-        this.mailSender = mailSender;
+        this.emailService = emailService;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -128,14 +120,6 @@ public class LoginOtpService {
     }
 
     private void sendCodeEmail(String email, String code) {
-        if (senderAddress == null || senderAddress.isBlank()
-                || senderPassword == null || senderPassword.isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    "Email delivery is not configured. Please try again later."
-            );
-        }
-
         try {
             String template = new String(
                     new ClassPathResource("templates/login-otp.html")
@@ -147,22 +131,15 @@ public class LoginOtpService {
                     .replace("{{otp}}", code)
                     .replace("{{expiresInMinutes}}", "5");
 
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(
-                    message,
-                    true,
-                    StandardCharsets.UTF_8.name()
-            );
-            helper.setFrom(senderAddress);
-            helper.setTo(email);
-            helper.setSubject("Your PayProof sign-in code");
-            helper.setText(
+            emailService.send(
+                    email,
+                    "Your PayProof sign-in code",
                     "Your PayProof sign-in code is " + code
                             + ". It expires in 5 minutes. Never share this code.",
                     html
             );
-            mailSender.send(message);
-        } catch (IOException | MessagingException | MailException exception) {
+        } catch (IOException | RestClientException | IllegalStateException exception) {
+            log.error("Could not send verification email via Resend.", exception);
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "Could not send a verification email. Please try again later.",
