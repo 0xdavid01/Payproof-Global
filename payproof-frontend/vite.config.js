@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 
-const backend = "http://localhost:8080";
+const backend = "https://payproof-backend-3n08.onrender.com";
 
 export default defineConfig({
   plugins: [

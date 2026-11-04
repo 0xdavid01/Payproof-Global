@@ -204,7 +204,7 @@
   font-weight: 500;
 }
 
-.ov-project span {
+.ov-project > div > span {
   display: block;
   margin-top: 2px;
   font-size: 14px;

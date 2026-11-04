@@ -4,9 +4,13 @@ package com.example.payproof.controller;
 import com.example.payproof.dto.request.UserRegistrationRequest;
 import com.example.payproof.dto.response.UserResponse;
 import com.example.payproof.security.CustomUserPrincipal;
+import com.example.payproof.service.LoginOtpService;
 import com.example.payproof.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,8 +20,11 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 
@@ -26,15 +33,21 @@ import java.util.Map;
 public class AuthController {
 
     private final UserService userService;
+        private final LoginOtpService loginOtpService;
     private final AuthenticationManager authenticationManager;
+        private final UserDetailsService userDetailsService;
     private final SecurityContextRepository securityContextRepository;
 
     public AuthController(
             UserService userService,
+            LoginOtpService loginOtpService,
             AuthenticationManager authenticationManager,
+            UserDetailsService userDetailsService,
             SecurityContextRepository securityContextRepository) {
         this.userService = userService;
+        this.loginOtpService = loginOtpService;
         this.authenticationManager = authenticationManager;
+        this.userDetailsService = userDetailsService;
         this.securityContextRepository = securityContextRepository;
     }
 
@@ -72,19 +85,59 @@ public class AuthController {
                 )
         );
 
+        loginOtpService.issueCode(authentication.getName(), httpRequest.getSession(true));
+
+        return ResponseEntity.ok(Map.of(
+                "requiresOtp", true,
+                "email", authentication.getName()
+        ));
+    }
+
+    @PostMapping("/verify-otp")
+    public ResponseEntity<?> verifyOtp(
+            @Valid @RequestBody OtpRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
+
+        loginOtpService.verifyCode(
+                request.email(),
+                request.code(),
+                httpRequest.getSession(false)
+        );
+
+        UserDetails userDetails = userDetailsService.loadUserByUsername(request.email());
+        if (!userDetails.isEnabled()) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "This account is not available."
+            );
+        }
+        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
+                userDetails,
+                null,
+                userDetails.getAuthorities()
+        );
+
+        httpRequest.changeSessionId();
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
-
-        securityContextRepository.saveContext(
-                context,
-                httpRequest,
-                httpResponse
-        );
+        securityContextRepository.saveContext(context, httpRequest, httpResponse);
 
         return ResponseEntity.ok(Map.of(
                 "message", "Login successful",
                 "email", authentication.getName()
+        ));
+    }
+
+    @PostMapping("/resend-otp")
+    public ResponseEntity<?> resendOtp(
+            @Valid @RequestBody ResendOtpRequest request,
+            HttpServletRequest httpRequest) {
+
+        loginOtpService.resendCode(request.email(), httpRequest.getSession(false));
+        return ResponseEntity.ok(Map.of(
+                "message", "If sign-in is pending, a new code has been sent."
         ));
     }
 
@@ -113,5 +166,14 @@ public class AuthController {
     public record LoginRequest(
             String email,
             String password
+    ) {}
+
+    public record OtpRequest(
+            @NotBlank @Email String email,
+            @NotBlank @Pattern(regexp = "[0-9]{6}") String code
+    ) {}
+
+    public record ResendOtpRequest(
+            @NotBlank @Email String email
     ) {}
 }

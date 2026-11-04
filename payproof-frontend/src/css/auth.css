@@ -250,6 +250,62 @@
   font-size: 14px;
 }
 
+.otp-form {
+  gap: 24px;
+}
+
+.otp-inputs {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.otp-digit {
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+  font-size: 26px;
+  font-weight: 600;
+  outline: none;
+}
+
+.otp-digit:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(23, 107, 77, 0.12);
+}
+
+.otp-actions {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.otp-text-button {
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.otp-text-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.otp-resend-notice {
+  margin-top: -12px;
+  color: var(--primary);
+  font-size: 14px;
+}
+
 /* ---------- role picker ---------- */
 .role-grid {
   display: grid;

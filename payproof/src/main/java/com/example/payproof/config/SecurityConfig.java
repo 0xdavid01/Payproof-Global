@@ -53,7 +53,10 @@ public class SecurityConfig {
                                 CookieCsrfTokenRepository.withHttpOnlyFalse()
                         )
                         .csrfTokenRequestHandler(csrfTokenRequestHandler())
-                        .ignoringRequestMatchers("/api/auth/**")
+                        .ignoringRequestMatchers(
+                                "/api/auth/register",
+                                "/api/auth/login"
+                        )
                 )
 
                 .securityContext(context -> context
@@ -65,8 +68,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(
+                                "/api/csrf",
                                 "/api/auth/register",
                                 "/api/auth/login",
+                                "/api/auth/verify-otp",
+                                "/api/auth/resend-otp",
                                 "/api/auth/logout",
                                 "/api/auth/google",
                                 "/oauth2/**",
@@ -152,7 +158,13 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         configuration.setAllowedOrigins(
-                List.of("http://localhost:5173")
+                List.of(
+                        "http://localhost:5173",
+                        "https://payproof.site",
+                        "https://www.payproof.site",
+                        "https://app.payproof.site",
+                        "https://your-project.vercel.app"
+                )
         );
 
         configuration.setAllowedMethods(

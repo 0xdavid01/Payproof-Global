@@ -6,6 +6,18 @@ export const login = (email, password) =>
     body: { email, password },
   });
 
+export const verifyLoginOtp = (email, code) =>
+  request("/api/auth/verify-otp", {
+    method: "POST",
+    body: { email, code },
+  });
+
+export const resendLoginOtp = (email) =>
+  request("/api/auth/resend-otp", {
+    method: "POST",
+    body: { email },
+  });
+
 export const register = (payload) =>
   request("/api/auth/register", {
     method: "POST",

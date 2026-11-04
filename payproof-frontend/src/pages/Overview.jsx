@@ -324,6 +324,7 @@ function FreelancerOverview({ user }) {
             className="btn btn-secondary spaced-top"
             onClick={() => setReloadKey((key) => key + 1)}
           >
+            <RefreshCw size={18} />
             Try again
           </button>
         </Card>
@@ -597,6 +598,7 @@ function ClientOverview({ user }) {
             className="btn btn-secondary spaced-top"
             onClick={() => setReloadKey((key) => key + 1)}
           >
+            <RefreshCw size={18} />
             Try again
           </button>
         </Card>

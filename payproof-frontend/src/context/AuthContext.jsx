@@ -177,6 +177,18 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const response = await authService.login(email, password);
 
+    if (response?.requiresOtp) return { requiresOtp: true };
+
+    return establishUser(response, email);
+  };
+
+  const verifyLoginOtp = async (email, code) => {
+    const response = await authService.verifyLoginOtp(email, code);
+
+    return establishUser(response, email);
+  };
+
+  const establishUser = async (response, email) => {
     const role = await authService.detectRole();
 
     if (!role) {
@@ -216,6 +228,7 @@ export function AuthProvider({ children }) {
     sessionExpired,
     backendUnavailable,
     login,
+    verifyLoginOtp,
     logout,
     saveUser,
   };

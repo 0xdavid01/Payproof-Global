@@ -34,6 +34,7 @@ public class SubmissionService {
     private final R2StorageService storageService;
     private final NearTransactionVerifier nearTransactionVerifier;
     private final ActivityLogService activityLogService;
+    private final ProjectEmailNotificationService emailNotificationService;
 
     public SubmissionService(
             JobRepository jobRepository,
@@ -44,7 +45,8 @@ public class SubmissionService {
             SubmissionReviewRepository submissionReviewRepository,
             R2StorageService storageService,
             NearTransactionVerifier nearTransactionVerifier,
-            ActivityLogService activityLogService
+            ActivityLogService activityLogService,
+            ProjectEmailNotificationService emailNotificationService
     ) {
         this.jobRepository = jobRepository;
         this.jobSubmissionRepository = jobSubmissionRepository;
@@ -55,6 +57,7 @@ public class SubmissionService {
         this.storageService = storageService;
         this.nearTransactionVerifier = nearTransactionVerifier;
         this.activityLogService = activityLogService;
+        this.emailNotificationService = emailNotificationService;
     }
 
     @Transactional
@@ -193,6 +196,7 @@ public class SubmissionService {
                     "WORK_SUBMITTED",
                     "Submitted work version " + nextVersion + "."
             );
+            emailNotificationService.notifyClientOfSubmission(job, saved);
             return saved;
 
         } catch (RuntimeException exception) {
@@ -217,7 +221,7 @@ public class SubmissionService {
     ) {
         requireRole(client, UserRole.CLIENT);
 
-        JobModel job = getJob(jobId);
+        JobModel job = getJobForUpdate(jobId);
 
         if (!job.getClient().getUserId().equals(client.getUserId())) {
             throw new ResponseStatusException(
@@ -347,6 +351,7 @@ public class SubmissionService {
                     "Approved delivery version " + version.getVersionNumber()
                             + " and confirmed payment release on NEAR."
             );
+            emailNotificationService.notifyFreelancerOfPayout(job, version);
         } else if (request.getStatus()
                 == SubmissionReviewStatus.CHANGES_REQUESTED) {
             activityLogService.record(
@@ -355,13 +360,17 @@ public class SubmissionService {
                     "DELIVERY_CHANGES_REQUESTED",
                     "Requested changes to delivery version " + version.getVersionNumber() + "."
             );
+            emailNotificationService.notifyFreelancerOfRequestedChanges(
+                    job,
+                    request.getFeedback()
+            );
         }
         return savedReview;
     }
 
     @Transactional
     public boolean reconcileReleasedEscrow(String jobId, UserModel user) {
-        JobModel job = getJob(jobId);
+        JobModel job = getJobForUpdate(jobId);
         boolean isClient = user != null
                 && user.getRole() == UserRole.CLIENT
                 && job.getClient().getUserId().equals(user.getUserId());
@@ -444,6 +453,7 @@ public class SubmissionService {
                 "Confirmed delivery version " + version.getVersionNumber()
                         + " and payment release on NEAR."
         );
+        emailNotificationService.notifyFreelancerOfPayout(job, version);
         return true;
     }
 
@@ -576,6 +586,14 @@ public class SubmissionService {
 
     private JobModel getJob(String jobId) {
         return jobRepository.findById(jobId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Job not found"
+                ));
+    }
+
+    private JobModel getJobForUpdate(String jobId) {
+        return jobRepository.findByIdForUpdate(jobId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Job not found"
