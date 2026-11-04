@@ -1,9 +1,7 @@
 package com.example.payproof.model;
 
 import com.example.payproof.dto.JobRequirement;
-import com.example.payproof.enums.ContractStatus;
-import com.example.payproof.enums.InvitationStatus;
-import com.example.payproof.enums.JobStatus;
+import com.example.payproof.enums.*;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -55,10 +53,12 @@ public class JobModel {
     @Column(name = "freelancer_approved_contract_version")
     private Integer freelancerApprovedContractVersion;
 
-    @Column(precision = 19, scale = 8)
+    @Column(nullable = false, precision = 19, scale = 8)
     private BigDecimal budget;
 
-    private String currency;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private PaymentCurrency currency;
 
     private LocalDateTime deadline;
 
@@ -95,8 +95,19 @@ public class JobModel {
     @JoinColumn(name = "freelancer_id")
     private UserModel freelancer;
 
+
     @Column(name = "escrow_id", unique = true)
     private String escrowId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "escrow_creation_status", length = 20)
+    private EscrowCreationStatus escrowCreationStatus;
+
+    @Column(name = "escrow_creation_id", unique = true)
+    private String escrowCreationId;
+
+    @Column(name = "escrow_creation_reserved_at")
+    private LocalDateTime escrowCreationReservedAt;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -104,6 +115,17 @@ public class JobModel {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "escrow_creation_transaction_hash", length = 128)
+    private String escrowCreationTransactionHash;
+
+    @Column(name = "escrow_creation_client_wallet", length = 128)
+    private String escrowCreationClientWallet;
+
+    @Column(name = "escrow_creation_freelancer_wallet", length = 128)
+    private String escrowCreationFreelancerWallet;
+
+    @Column(name = "escrow_creation_amount", length = 80)
+    private String escrowCreationAmount;
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {

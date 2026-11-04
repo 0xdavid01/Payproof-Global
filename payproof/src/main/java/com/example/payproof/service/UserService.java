@@ -10,6 +10,8 @@ import com.example.payproof.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 @Service
 public class UserService {
@@ -46,6 +48,16 @@ public class UserService {
         user.setStatus(UserStatus.ACTIVE);
 
         return toResponse(userRepository.save(user));
+    }
+
+    @Transactional(readOnly = true)
+    public UserResponse getUserResponse(String userId) {
+        UserModel user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "User not found"
+                ));
+        return toResponse(user);
     }
 
     @Transactional

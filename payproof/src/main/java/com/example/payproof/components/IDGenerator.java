@@ -44,4 +44,11 @@ public class IDGenerator {
 
         return prefix + String.format("%03d", count + 1);
     }
+
+    public String generateEscrowId() {
+        return "ESC-" + java.util.UUID.randomUUID()
+                .toString()
+                .replace("-", "")
+                .toUpperCase();
+    }
 }

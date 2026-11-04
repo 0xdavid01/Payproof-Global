@@ -1,0 +1,682 @@
+a.btn {
+  text-decoration: none;
+}
+
+/* ---------- page grid ---------- */
+.project-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: start;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.card-lead {
+  color: var(--muted);
+  margin: -8px 0 20px;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.small {
+  font-size: 14px;
+}
+
+.field-error {
+  color: var(--red);
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+/* ---------- textarea (matches text inputs) ---------- */
+.field-control textarea {
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.field-control textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(23, 107, 77, 0.12);
+}
+
+.field-control input:disabled,
+.field-control textarea:disabled {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+/* ---------- dropzone ---------- */
+.dropzone {
+  border: 1.5px dashed #c9d4ce;
+  border-radius: 14px;
+  padding: 36px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.dropzone strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.dropzone .muted {
+  font-size: 14px;
+}
+
+.dropzone.dragging {
+  background: var(--tint);
+  border-color: var(--primary);
+}
+
+.dropzone.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.file-row {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+}
+
+.file-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-meta strong {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-meta .muted {
+  font-size: 13px;
+}
+
+/* ---------- shared project checklist ---------- */
+.prd-requirements-card > .card-title {
+  margin-bottom: 4px;
+}
+
+.project-checklist-review-card > .card-title {
+  margin-bottom: 4px;
+}
+
+.project-checklist-review .project-checklist-header {
+  margin-top: 0;
+}
+
+.project-checklist-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.project-checklist-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid #dcebe1;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #f1f8f3, #e8f3ec);
+  color: var(--primary);
+}
+
+.project-checklist-heading {
+  min-width: 0;
+  flex: 1;
+}
+
+.project-checklist-heading h3 {
+  font-size: 16px;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.project-checklist-heading p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.project-checklist-access {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #f8f9f8;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.project-checklist-access.is-editor {
+  border-color: #d7e9dd;
+  background: #f0f7f2;
+  color: var(--primary);
+}
+
+.requirement-progress {
+  margin-top: 20px;
+  padding: 17px 18px 16px;
+  border: 1px solid #e4ebe6;
+  border-radius: 14px;
+  background: linear-gradient(115deg, #f8fbf8 0%, #f5f8f6 100%);
+}
+
+.requirement-progress-info,
+.requirement-progress-summary,
+.requirement-progress-meta {
+  display: flex;
+  align-items: center;
+}
+
+.requirement-progress-info {
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.requirement-progress-summary {
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.requirement-progress-summary strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.requirement-progress-meta {
+  gap: 10px;
+}
+
+.requirement-progress-percent {
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.requirement-saving {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.requirement-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5ece7;
+}
+
+.requirement-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #176b4d, #39a273);
+  transition: width 240ms ease;
+}
+
+.requirement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  list-style: none;
+}
+
+.requirement-list .project-requirement {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 66px;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  transition: border-color 160ms ease, background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.project-requirement:hover {
+  border-color: #cbd9d0;
+  box-shadow: 0 4px 14px rgba(24, 35, 30, 0.045);
+}
+
+.project-requirement-done {
+  border-color: #d7e9dd;
+  background: #f8fbf8;
+}
+
+.project-requirement-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.project-requirement-label.is-readonly {
+  cursor: default;
+}
+
+.requirement-list .project-requirement-check svg {
+  margin-top: 0;
+  color: inherit;
+}
+
+.project-requirement-label input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.project-requirement-check {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1.5px solid #cbd5ce;
+  border-radius: 7px;
+  background: #fff;
+  color: transparent;
+  transition: color 160ms ease, background 160ms ease,
+    border-color 160ms ease, transform 160ms ease;
+}
+
+.project-requirement-check svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.5;
+}
+
+.project-requirement-label input:checked + .project-requirement-check {
+  transform: scale(1.02);
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.project-requirement-label input:focus-visible + .project-requirement-check {
+  outline: 3px solid rgba(23, 107, 77, 0.22);
+  outline-offset: 2px;
+}
+
+.project-requirement-label input:disabled + .project-requirement-check {
+  background: #f3f5f3;
+}
+
+.project-requirement-label input:checked:disabled
+  + .project-requirement-check {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.project-requirement-number {
+  color: #8a968e;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.project-requirement-condition {
+  min-width: 0;
+  color: #34423a;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.project-requirement-done .project-requirement-condition {
+  color: #66766c;
+}
+
+.project-requirement-status {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #f1f3f1;
+  color: #68746d;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.project-requirement-status.is-complete {
+  background: #e8f4ec;
+  color: var(--primary);
+}
+
+.project-checklist-note {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.project-checklist-empty {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px dashed #d7e1da;
+  border-radius: 12px;
+  background: #fafcfb;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.requirement-list .project-requirement-editing {
+  align-items: flex-start;
+}
+
+.project-requirement-editing .project-requirement-number {
+  flex: 0 0 auto;
+  margin-top: 12px;
+}
+
+.project-requirement-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 66px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.project-requirement-input::placeholder {
+  color: #929d96;
+}
+
+.project-requirement-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(23, 107, 77, 0.1);
+}
+
+.project-requirement-input:disabled {
+  background: #f5f7f5;
+  color: var(--muted);
+}
+
+.project-requirement-remove {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  margin-top: 4px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #78847c;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease,
+    border-color 150ms ease;
+}
+
+.project-requirement-remove:hover:not(:disabled) {
+  border-color: #f0d8d5;
+  background: #fff5f4;
+  color: var(--red);
+}
+
+.project-requirement-remove:focus-visible,
+.project-checklist-add:focus-visible {
+  outline: 3px solid rgba(23, 107, 77, 0.2);
+  outline-offset: 2px;
+}
+
+.project-requirement-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.project-checklist-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 9px 13px;
+  border: 1px solid #d8e8dd;
+  border-radius: 10px;
+  background: #f3f8f4;
+  color: var(--primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.project-checklist-add:hover:not(:disabled) {
+  border-color: #b7d4c2;
+  background: #eaf4ed;
+}
+
+.project-checklist-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ---------- side cards ---------- */
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.dot-muted {
+  color: var(--muted);
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  color: var(--muted);
+}
+
+.kv strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.kv-big strong {
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.rule {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 8px 0;
+}
+
+.next-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.next-list li {
+  display: flex;
+  gap: 14px;
+}
+
+.next-list svg {
+  color: var(--primary);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.next-list li div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.next-list strong {
+  font-weight: 500;
+}
+
+.next-list .muted {
+  font-size: 14px;
+}
+
+.callout-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.callout-row svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.callout-row p {
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+@media (max-width: 1100px) {
+  .project-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .project-checklist-header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .project-checklist-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
+  .project-checklist-access {
+    align-self: center;
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .requirement-list .project-requirement {
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 10px;
+  }
+
+  .project-requirement-label {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .project-requirement-check {
+    margin-top: 1px;
+  }
+
+  .project-requirement-number {
+    margin-top: 3px;
+  }
+
+  .project-requirement-status {
+    margin-top: 2px;
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+
+  .requirement-list .project-requirement-editing {
+    gap: 7px;
+    padding: 10px 8px;
+  }
+
+  .project-requirement-editing .project-requirement-number {
+    margin-top: 14px;
+  }
+
+  .project-requirement-input {
+    padding: 10px;
+    font-size: 13px;
+  }
+
+  .project-requirement-remove {
+    width: 32px;
+    height: 34px;
+  }
+}

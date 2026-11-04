@@ -1,0 +1,66 @@
+.wallet-connect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  background: var(--tint);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wallet-connect-btn:hover:not(:disabled) {
+  background: #dfeee5;
+}
+
+.wallet-connect-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wallet-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #fdf0ee;
+  color: var(--red);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 24px;
+  font-size: 14px;
+}
+
+.user-menu-pop button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- dev-only wallet diagnostics ---------- */
+.wallet-debug {
+  margin-top: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.wallet-debug summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.wallet-debug pre {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}

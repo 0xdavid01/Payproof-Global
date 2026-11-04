@@ -17,6 +17,9 @@ public class WalletChallengeModel {
     @Column(nullable = false, unique = true)
     private String challengeId;
 
+    @Column(name = "user_id", nullable = false)
+    private String userId;
+
     @Column(nullable = false, unique = true)
     private String nonce;
 

@@ -3,6 +3,7 @@ package com.example.payproof.controller;
 
 import com.example.payproof.dto.request.UserRegistrationRequest;
 import com.example.payproof.dto.response.UserResponse;
+import com.example.payproof.security.CustomUserPrincipal;
 import com.example.payproof.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -14,6 +15,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.*;
 
@@ -43,6 +45,18 @@ public class AuthController {
         UserResponse response = userService.registerUser(request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/me")
+    public UserResponse currentUser(
+            @AuthenticationPrincipal CustomUserPrincipal principal
+    ) {
+        if (principal == null) {
+            throw new org.springframework.security.authentication.AuthenticationCredentialsNotFoundException(
+                    "Authentication is required"
+            );
+        }
+        return userService.getUserResponse(principal.getUserId());
     }
 
     @PostMapping("/login")

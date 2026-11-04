@@ -1,23 +1,21 @@
 package com.example.payproof.service;
 
 import com.example.payproof.enums.UserRole;
-import jakarta.servlet.http.HttpServletRequest;
+import com.example.payproof.enums.UserStatus;
+import com.example.payproof.model.UserModel;
+import com.example.payproof.security.CustomOidcUserPrincipal;
 import jakarta.servlet.http.HttpSession;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
-import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
+import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
-import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
-import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import java.util.List;
-
 @Service
-public class GoogleOAuth2UserService extends DefaultOAuth2UserService {
+public class GoogleOAuth2UserService extends OidcUserService {
 
     private final UserService userService;
 
@@ -26,57 +24,73 @@ public class GoogleOAuth2UserService extends DefaultOAuth2UserService {
     }
 
     @Override
-    public OAuth2User loadUser(OAuth2UserRequest request)
+    public OidcUser loadUser(OidcUserRequest request)
             throws OAuth2AuthenticationException {
 
-        OAuth2User googleUser = super.loadUser(request);
+        OidcUser googleUser = super.loadUser(request);
 
-        String googleId = googleUser.getAttribute("sub");
-        String email = googleUser.getAttribute("email");
-        String firstName = googleUser.getAttribute("given_name");
-        String lastName = googleUser.getAttribute("family_name");
-        String picture = googleUser.getAttribute("picture");
-        Boolean emailVerified = googleUser.getAttribute("email_verified");
+        String googleId = googleUser.getSubject();
+        String email = googleUser.getClaimAsString("email");
+        String firstName = googleUser.getClaimAsString("given_name");
+        String lastName = googleUser.getClaimAsString("family_name");
+        String picture = googleUser.getClaimAsString("picture");
+        Boolean emailVerified = googleUser.getClaim("email_verified");
 
-        if (googleId == null || email == null ||
-                !Boolean.TRUE.equals(emailVerified)) {
-            throw oauthError("Google must provide a verified email address");
+        if (googleId == null
+                || email == null
+                || !Boolean.TRUE.equals(emailVerified)) {
+            throw oauthError(
+                    "Google must provide a verified email address"
+            );
         }
 
         ServletRequestAttributes attributes =
-                (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                (ServletRequestAttributes)
+                        RequestContextHolder.getRequestAttributes();
 
         if (attributes == null) {
-            throw oauthError("Unable to access the authentication session");
+            throw oauthError(
+                    "Unable to access the authentication session"
+            );
         }
 
-        HttpServletRequest servletRequest = attributes.getRequest();
-        HttpSession session = servletRequest.getSession(false);
+        HttpSession session =
+                attributes.getRequest().getSession(false);
 
         if (session == null) {
-            throw oauthError("Your registration session has expired");
+            throw oauthError(
+                    "Your registration session has expired. Please try again."
+            );
         }
 
-        UserRole role = (UserRole) session.getAttribute("OAUTH2_REGISTER_ROLE");
+        UserRole selectedRole =
+                (UserRole) session.getAttribute("OAUTH2_REGISTER_ROLE");
 
-        if (role == null) {
-            throw oauthError("Please select an account type before continuing");
+        if (selectedRole != UserRole.CLIENT
+                && selectedRole != UserRole.FREELANCER) {
+            throw oauthError("Please select a valid account type");
         }
 
-        userService.registerGoogleUser(
+        UserModel user = userService.registerGoogleUser(
                 googleId,
                 email,
                 firstName,
                 lastName,
-                role,
+                selectedRole,
                 picture
         );
 
-        return new DefaultOAuth2User(
-                List.of(new SimpleGrantedAuthority("ROLE_USER")),
-                googleUser.getAttributes(),
-                "sub"
-        );
+        if (user.getRole() == null) {
+            throw oauthError("Your account has no assigned role");
+        }
+
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw oauthError("Your account is not active");
+        }
+
+        session.removeAttribute("OAUTH2_REGISTER_ROLE");
+
+        return new CustomOidcUserPrincipal(user, googleUser);
     }
 
     private OAuth2AuthenticationException oauthError(String message) {

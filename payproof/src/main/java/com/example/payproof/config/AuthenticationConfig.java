@@ -1,4 +1,3 @@
-
 package com.example.payproof.config;
 
 import org.springframework.context.annotation.Bean;
@@ -13,7 +12,8 @@ public class AuthenticationConfig {
 
     @Bean
     public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration configuration) throws Exception {
+            AuthenticationConfiguration configuration
+    ) throws Exception {
         return configuration.getAuthenticationManager();
     }
 

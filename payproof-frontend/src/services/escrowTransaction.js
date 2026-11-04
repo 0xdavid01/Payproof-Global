@@ -1,0 +1,378 @@
+const GAS_NEAR = "100000000000000";
+const GAS_TOKEN = "200000000000000";
+
+const APP_NETWORK = (
+  import.meta.env.VITE_NEAR_NETWORK || "testnet"
+).toUpperCase();
+
+const CONFIGURED_CONTRACT =
+  import.meta.env.VITE_ESCROW_CONTRACT_ID || "";
+
+const isPositiveInteger = (value) =>
+  /^\d+$/.test(String(value ?? "")) &&
+  BigInt(String(value)) > 0n;
+
+export class WalletTxError extends Error {
+  constructor(kind, message) {
+    super(message);
+    this.name = "WalletTxError";
+    this.kind = kind;
+  }
+}
+
+export function normalizePreparation(input) {
+  const top = input && typeof input === "object" ? input : {};
+  const nested = top.preparation ?? top.transaction ?? top.data;
+
+  const p = {
+    ...top,
+    ...(nested && typeof nested === "object" ? nested : {}),
+  };
+
+  let args = p.args ?? {};
+
+  if (typeof args === "string") {
+    try {
+      args = JSON.parse(args);
+    } catch {
+      throw new WalletTxError(
+        "failed",
+        "The server returned invalid transaction arguments."
+      );
+    }
+  }
+
+  if (
+    !args ||
+    typeof args !== "object" ||
+    Array.isArray(args)
+  ) {
+    throw new WalletTxError(
+      "failed",
+      "The server returned invalid transaction arguments."
+    );
+  }
+
+  return {
+    escrowId: p.escrowId ?? p.id ?? args.escrow_id ?? null,
+    jobId: p.jobId ?? null,
+    network: p.network ?? null,
+    asset: p.asset ?? p.currency ?? null,
+    contractId:
+      p.contractId ??
+      p.escrowContractId ??
+      p.escrowContract ??
+      null,
+    tokenContractId:
+      p.tokenContractId ??
+      p.tokenContract ??
+      p.tokenAddress ??
+      null,
+    methodName: p.methodName ?? p.method ?? null,
+    args,
+    attachedDeposit: p.attachedDeposit ?? p.deposit ?? null,
+    gas: p.gas ?? null,
+    decimals: p.decimals ?? p.tokenDecimals ?? null,
+    platformFee: p.platformFee ?? p.feeAmount ?? null,
+    title: p.title ?? args.title ?? null,
+    clientWalletAddress: p.clientWalletAddress ?? null,
+    freelancerWalletAddress: p.freelancerWalletAddress ?? null,
+  };
+}
+
+function classify(error) {
+  if (error instanceof WalletTxError) {
+    return error;
+  }
+
+  const text = String(error?.message || error || "");
+
+  if (/reject|cancel|denied|declin|closed|dismiss/i.test(text)) {
+    return new WalletTxError(
+      "cancelled",
+      "The wallet request was cancelled."
+    );
+  }
+
+  if (/not enough|insufficient|balance|exceeds/i.test(text)) {
+    return new WalletTxError(
+      "insufficient",
+      "Your wallet balance is too low for this payment and network fees."
+    );
+  }
+
+  return new WalletTxError(
+    "failed",
+    text || "The transaction failed."
+  );
+}
+
+export function validatePreparation(prep, expectedAccountId) {
+  if (
+    !prep.escrowId ||
+    !prep.methodName ||
+    !prep.contractId
+  ) {
+    throw new WalletTxError(
+      "failed",
+      "The server returned an incomplete escrow preparation."
+    );
+  }
+
+  if (
+    prep.network &&
+    String(prep.network).toUpperCase() !== APP_NETWORK
+  ) {
+    throw new WalletTxError(
+      "wrong-network",
+      `This escrow is prepared for ${prep.network}, but the app is on ${APP_NETWORK}.`
+    );
+  }
+
+  if (
+    CONFIGURED_CONTRACT &&
+    prep.contractId !== CONFIGURED_CONTRACT
+  ) {
+    throw new WalletTxError(
+      "failed",
+      `The prepared escrow targets ${prep.contractId}, but this app is configured for ${CONFIGURED_CONTRACT}.`
+    );
+  }
+
+  if (
+    expectedAccountId &&
+    prep.clientWalletAddress &&
+    prep.clientWalletAddress !== expectedAccountId
+  ) {
+    throw new WalletTxError(
+      "wrong-account",
+      `The prepared escrow belongs to ${prep.clientWalletAddress}, but your linked wallet is ${expectedAccountId}.`
+    );
+  }
+
+  const gas =
+    prep.gas ??
+    (prep.methodName === "ft_transfer_call"
+      ? GAS_TOKEN
+      : GAS_NEAR);
+
+  if (!isPositiveInteger(gas)) {
+    throw new WalletTxError(
+      "failed",
+      "The prepared gas amount is invalid."
+    );
+  }
+
+  const args = prep.args;
+
+  if (prep.methodName === "create_and_fund_with_near") {
+    if (
+      !args.escrow_id ||
+      !args.freelancer ||
+      !args.amount ||
+      !args.title ||
+      typeof args.description !== "string"
+    ) {
+      throw new WalletTxError(
+        "failed",
+        "The NEAR escrow preparation is missing required contract arguments."
+      );
+    }
+
+    if (String(args.escrow_id) !== String(prep.escrowId)) {
+      throw new WalletTxError(
+        "failed",
+        "The escrow ID does not match the contract arguments."
+      );
+    }
+
+    if (
+      !isPositiveInteger(args.amount) ||
+      !isPositiveInteger(prep.attachedDeposit)
+    ) {
+      throw new WalletTxError(
+        "failed",
+        "The prepared NEAR amount is not a valid whole number of yoctoNEAR."
+      );
+    }
+
+    if (
+      BigInt(String(args.amount)) !==
+      BigInt(String(prep.attachedDeposit))
+    ) {
+      throw new WalletTxError(
+        "failed",
+        "The NEAR amount and attached deposit do not match."
+      );
+    }
+
+    if (
+      prep.freelancerWalletAddress &&
+      args.freelancer !== prep.freelancerWalletAddress
+    ) {
+      throw new WalletTxError(
+        "failed",
+        "The freelancer wallet does not match the prepared transaction."
+      );
+    }
+
+    return;
+  }
+
+  if (prep.methodName === "ft_transfer_call") {
+    if (!prep.tokenContractId) {
+      throw new WalletTxError(
+        "failed",
+        "The token contract address is missing."
+      );
+    }
+
+    if (args.receiver_id !== prep.contractId) {
+      throw new WalletTxError(
+        "failed",
+        "The token transfer is not addressed to the escrow contract."
+      );
+    }
+
+    if (!isPositiveInteger(args.amount)) {
+      throw new WalletTxError(
+        "failed",
+        "The prepared token amount is invalid."
+      );
+    }
+
+    let msg = args.msg;
+
+    if (typeof msg === "string") {
+      try {
+        msg = JSON.parse(msg);
+      } catch {
+        throw new WalletTxError(
+          "failed",
+          "The token transfer message is not valid JSON."
+        );
+      }
+    }
+
+    if (!msg || String(msg.escrow_id) !== String(prep.escrowId)) {
+      throw new WalletTxError(
+        "failed",
+        "The token transfer message does not match the escrow ID."
+      );
+    }
+
+    return;
+  }
+
+  throw new WalletTxError(
+    "failed",
+    `Unsupported escrow method: ${prep.methodName}`
+  );
+}
+
+export async function signPreparedEscrow(
+  preparation,
+  { expectedAccountId } = {}
+) {
+  const prep = normalizePreparation(preparation);
+
+  validatePreparation(prep, expectedAccountId);
+
+  const near = await import("./nearWallet.js");
+
+  let signerId;
+
+  try {
+    signerId = await near.ensureWalletSession();
+  } catch (error) {
+    throw classify(error);
+  }
+
+  if (expectedAccountId && signerId !== expectedAccountId) {
+    throw new WalletTxError(
+      "wrong-account",
+      `Switch your wallet to ${expectedAccountId}. Your current wallet is ${signerId}.`
+    );
+  }
+
+  if (
+    prep.clientWalletAddress &&
+    signerId !== prep.clientWalletAddress
+  ) {
+    throw new WalletTxError(
+      "wrong-account",
+      `Your connected wallet (${signerId}) does not match the client wallet for this escrow (${prep.clientWalletAddress}).`
+    );
+  }
+
+  const isToken = prep.methodName === "ft_transfer_call";
+  const args = { ...prep.args };
+
+  if (args.msg && typeof args.msg === "object") {
+    args.msg = JSON.stringify(args.msg);
+  }
+
+  const receiverId = isToken
+    ? prep.tokenContractId
+    : prep.contractId;
+
+  const deposit = isToken
+    ? "1"
+    : String(prep.attachedDeposit);
+
+  const gas = String(
+    prep.gas ?? (isToken ? GAS_TOKEN : GAS_NEAR)
+  );
+
+  console.info("[PayProof] Prepared transaction for signing", {
+    receiverId,
+    methodName: prep.methodName,
+    accountId: signerId,
+    network: prep.network,
+    deposit,
+    gas,
+  });
+
+  let outcome;
+
+  try {
+    outcome = await near.sendFunctionCall({
+      receiverId,
+      methodName: prep.methodName,
+      args,
+      gas,
+      deposit,
+    });
+  } catch (error) {
+    throw classify(error);
+  }
+
+  if (
+    outcome?.status &&
+    typeof outcome.status === "object" &&
+    outcome.status.Failure
+  ) {
+    throw new WalletTxError(
+      "failed",
+      "The transaction failed on the NEAR blockchain."
+    );
+  }
+
+  const hash =
+    outcome?.transaction?.hash ??
+    outcome?.transaction_outcome?.id ??
+    outcome?.transaction_outcome?.outcome?.receipt_ids?.[0] ??
+    null;
+
+  if (!hash) {
+    console.error(
+      "[PayProof] Wallet returned no transaction hash.",
+      outcome
+    );
+  }
+
+  return {
+    hash,
+    outcome,
+  };
+}

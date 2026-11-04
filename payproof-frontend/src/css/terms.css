@@ -1,0 +1,37 @@
+.field-control select {
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+
+.field-control select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(23, 107, 77, 0.12);
+}
+
+.field-control select:disabled {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.terms-amount {
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.terms-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.terms-note svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}

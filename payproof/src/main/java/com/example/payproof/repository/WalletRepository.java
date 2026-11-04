@@ -10,17 +10,18 @@ import java.util.Optional;
 
 public interface WalletRepository extends JpaRepository<WalletModel, String> {
 
-    Optional<WalletModel> findByWalletAddressAndBlockchainAndNetworkAndStatus(
+    Optional<WalletModel> findByWalletAddressAndBlockchainAndNetwork(
             String walletAddress,
             String blockchain,
-            BlockchainNetwork network,
-            WalletStatus status
+            BlockchainNetwork network
     );
 
     Optional<WalletModel> findByUser(UserModel user);
 
-    Optional<WalletModel> findByUserAndStatus(
+    Optional<WalletModel> findByUserAndBlockchainAndNetworkAndStatus(
             UserModel user,
+            String blockchain,
+            BlockchainNetwork network,
             WalletStatus status
     );
 }

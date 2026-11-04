@@ -1,5 +1,7 @@
+
 package com.example.payproof.dto.request;
 
+import com.example.payproof.enums.PaymentCurrency;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -26,8 +28,8 @@ public class CreateJobRequest {
     @Positive
     private BigDecimal budget;
 
-    @NotBlank
-    private String currency;
+    @NotNull
+    private PaymentCurrency currency;
 
     private LocalDateTime deadline;
 

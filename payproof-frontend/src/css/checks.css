@@ -1,0 +1,67 @@
+.fund-checks {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  margin: 20px 0 4px;
+  border-top: 1px solid var(--border);
+}
+
+.fund-check {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.fund-check-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.fund-check-ok .fund-check-icon {
+  color: var(--primary);
+}
+
+.fund-check-fail .fund-check-icon {
+  color: var(--red);
+}
+
+.fund-check-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fund-check-body strong {
+  font-weight: 500;
+}
+
+.fund-check-body span {
+  font-size: 14px;
+  word-break: break-word;
+}
+
+.fund-check-blocked .fund-check-body strong {
+  color: var(--muted);
+}
+
+.btn-sm {
+  padding: 9px 14px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .fund-check {
+    flex-wrap: wrap;
+  }
+  .fund-check .btn-sm {
+    margin-left: 38px;
+  }
+}
