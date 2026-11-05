@@ -836,7 +836,7 @@ No `LICENSE` file or license declaration was found in the repository directories
 
 ## Domain roles
 
-- `payproof.site` is the public-facing brand/contact domain referenced by the landing page's `hello@payproof.site` email links. This repository does not include DNS or hosting configuration confirming where the apex domain is served.
-- `app.payproof.site` is the hosted application URL configured as the landing page's login and sign-up destination in `payproof-landing-page/src/App.jsx`.
+- `payproof.site` serves the public landing page in `payproof-landing-page/`.
+- `app.payproof.site` serves the client/freelancer web application in `payproof-frontend/`. The landing page's login and sign-up links point here.
 
-In short, the landing page promotes PayProof; users follow its login or sign-up links to the application. Update the landing page's `signupUrl` if the application domain changes.
+The landing page promotes PayProof, while clients and freelancers use the app subdomain to manage projects and escrow. Update `signupUrl` in `payproof-landing-page/src/App.jsx` if the application domain changes.
