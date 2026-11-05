@@ -47,7 +47,7 @@ async function ensureCsrfToken() {
 
 export async function request(
   path,
-  { method = "GET", body, isForm = false } = {}
+  { method = "GET", body, isForm = false, suppressUnauthorizedEvent = false } = {}
 ) {
   const upperMethod = method.toUpperCase();
   const csrfExempt = CSRF_EXEMPT_PATHS.some((p) => path === p || path.startsWith(`${p}?`));
@@ -123,7 +123,7 @@ export async function request(
   }
 
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 && !suppressUnauthorizedEvent) {
       window.dispatchEvent(new Event("payproof:unauthorized"));
     }
 

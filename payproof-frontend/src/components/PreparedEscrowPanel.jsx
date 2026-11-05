@@ -4,14 +4,8 @@ import Button from "./Button.jsx";
 import { formatUnits } from "../services/units.js";
 import { NETWORK_LABEL } from "../services/escrowService.js";
 
-function amountText(prep) {
-  if (prep.methodName === "create_and_fund_with_near") {
-    return `${formatUnits(prep.attachedDeposit, 24)} NEAR`;
-  }
-
-  return `${prep.args?.amount ?? "—"} base units${
-    prep.asset ? ` (${prep.asset})` : ""
-  }`;
+function amountText(amount) {
+  return `${formatUnits(amount, 24)} NEAR`;
 }
 
 export default function PreparedEscrowPanel({
@@ -46,8 +40,18 @@ export default function PreparedEscrowPanel({
       </div>
 
       <div className="kv">
-        <span>Amount to fund</span>
-        <strong>{amountText(prep)}</strong>
+        <span>Project amount</span>
+        <strong>{amountText(prep.args?.amount)}</strong>
+      </div>
+
+      <div className="kv">
+        <span>Client platform fee · 3.5%</span>
+        <strong>{amountText(prep.platformFee)}</strong>
+      </div>
+
+      <div className="kv">
+        <span>Total charged</span>
+        <strong>{amountText(prep.attachedDeposit)}</strong>
       </div>
 
       <div className="kv">

@@ -11,6 +11,9 @@ export const verifyWalletSignature = ({ accountId, publicKey, signature, nonce, 
   request("/api/auth/wallet/verify", {
     method: "POST",
     body: { accountId, publicKey, signature, nonce, blockchain: "NEAR", network },
+    // The backend also returns 401 for an invalid wallet signature; that is not a
+    // PayProof session expiry and should be shown as a wallet verification error.
+    suppressUnauthorizedEvent: true,
   });
 
 // Resolves to the wallet object, or null when the backend answers 204 (no wallet linked).

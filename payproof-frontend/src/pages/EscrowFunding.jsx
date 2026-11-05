@@ -27,6 +27,7 @@ import {
   formatDate,
   normalizeJob,
 } from "../services/jobMapper.js";
+import { calculatePlatformFee } from "../services/fees.js";
 
 import {
   NETWORK_ID,
@@ -502,9 +503,25 @@ export default function EscrowFunding() {
         saved?.escrowId &&
         (!saved.prep.jobId || saved.prep.jobId === jobId)
       ) {
-        setPrepared(saved.prep);
-        setEscrowId(saved.escrowId);
-        setPhase("ready");
+        try {
+          validatePreparation(saved.prep);
+          setPrepared(saved.prep);
+          setEscrowId(saved.escrowId);
+          setPhase("ready");
+        } catch (err) {
+          console.warn(
+            "[PayProof Funding] Discarding invalid saved preparation",
+            err
+          );
+          clearSavedTx(jobId);
+          setPrepared(null);
+          setEscrowId(null);
+          setFailureKind("request");
+          setMessage(
+            "Your saved funding details are outdated. Prepare a new escrow transaction before approving payment."
+          );
+          setPhase("idle");
+        }
         return;
       }
 
@@ -989,13 +1006,16 @@ export default function EscrowFunding() {
     !readyToSign &&
     !pendingTx;
 
+  const platformFee = calculatePlatformFee(job.amount);
+  const totalFundingAmount = Number(job.amount) + platformFee;
+
   const fundLabel = busyNow
     ? "Funding in progress..."
     : readyToSign
       ? "Ready to approve below"
       : reserved
-        ? `Continue funding ${formatAmount(job.amount, job.currency)}`
-        : `Fund ${formatAmount(job.amount, job.currency)}`;
+        ? `Continue funding ${formatAmount(totalFundingAmount, job.currency)}`
+        : `Fund ${formatAmount(totalFundingAmount, job.currency)}`;
 
   const stepperCurrent = funded
     ? Math.max(job.stage, 3)
@@ -1096,12 +1116,26 @@ export default function EscrowFunding() {
           {!isFreelancer && !funded && (
             <Card title="Review your funding">
               <div className="kv">
-                <span>Project escrow</span>
+                <span>Project amount</span>
                 <strong>
                   {formatAmount(
                     job.amount,
                     job.currency
                   )}
+                </strong>
+              </div>
+
+              <div className="kv">
+                <span>Client platform fee · 3.5%</span>
+                <strong>
+                  {formatAmount(platformFee, job.currency)}
+                </strong>
+              </div>
+
+              <div className="kv">
+                <span>Total charged</span>
+                <strong>
+                  {formatAmount(totalFundingAmount, job.currency)}
                 </strong>
               </div>
 

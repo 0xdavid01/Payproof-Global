@@ -21,6 +21,7 @@ public class CreateEscrowResponse {
 
     private String asset;
     private String amount;
+    private String platformFee;
     private String attachedDeposit;
     private String gas;
 

@@ -77,8 +77,8 @@ pub struct Escrow {
     pub client: AccountId,
     pub freelancer: AccountId,
     pub asset: Asset,
-    /// Gross job amount, excluding the platform fee. Funding must
-    /// exactly equal `amount`; the fee is deducted at release time.
+    /// Gross job amount payable to the freelancer, excluding the
+    /// platform fee paid by the client.
     pub amount: u128,
     pub funded_amount: u128,
     pub platform_fee_bps: u32,
@@ -369,9 +369,11 @@ impl EscrowContract {
             freelancer: freelancer.clone(),
             asset: asset.clone(),
             amount,
-            funded_amount: amount,
+            funded_amount: amount
+                .checked_add(self.fee_for(amount, self.platform_fee_bps))
+                .expect("Funding amount overflow"),
             platform_fee_bps: self.platform_fee_bps,
-            platform_fee: 0,
+            platform_fee: self.fee_for(amount, self.platform_fee_bps),
             status: EscrowStatus::Funded,
             title: title.clone(),
             description,
@@ -533,11 +535,8 @@ impl EscrowContract {
 
     /// Creates and funds a NEAR escrow in a single payable call.
     ///
-    /// The attached deposit must exactly equal `amount`. On success,
-    /// the escrow is stored with `status = Funded` and
-    /// `funded_amount = amount`. No `AwaitingFunding` record is
-    /// written, and the platform fee is not deducted here (it is
-    /// deducted at release time, matching the existing settlement).
+    /// `amount` is the freelancer's gross project amount. The attached
+    /// deposit must include the platform fee in addition to that amount.
     #[payable]
     pub fn create_and_fund_with_near(
         &mut self,
@@ -558,10 +557,15 @@ impl EscrowContract {
             client.clone(),
         );
 
+        let fee = self.fee_for(amount.0, self.platform_fee_bps);
+        let expected_deposit = amount
+            .0
+            .checked_add(fee)
+            .expect("Funding amount overflow");
         let deposit = env::attached_deposit().as_yoctonear();
         assert_eq!(
-            deposit, amount.0,
-            "Deposit must exactly match the escrow amount"
+            deposit, expected_deposit,
+            "Deposit must include the platform fee"
         );
 
         self.persist_funded_escrow(
@@ -580,6 +584,8 @@ impl EscrowContract {
                 "escrow_id": escrow_id,
                 "asset": "NEAR",
                 "amount": amount.0.to_string(),
+                "funded_amount": deposit.to_string(),
+                "platform_fee": fee.to_string(),
                 "client": client,
                 "freelancer": freelancer
             }),
@@ -593,7 +599,9 @@ impl EscrowContract {
     /// `ft_on_transfer` entry point. The client calls
     /// `ft_transfer_call` on the configured USDT/USDC contract with
     /// `msg = {"escrow_id": "...", "freelancer": "...", "amount":
-    /// "<raw units>", "title": "...", "description": "..."}`.
+    /// "<gross project amount in raw units>", "title": "...",
+    /// "description": "..."}`. The transferred amount must include
+    /// the platform fee in addition to the message amount.
     ///
     /// Atomicity:
     /// - If any validation fails, the whole `amount` is returned,
@@ -636,11 +644,8 @@ impl EscrowContract {
             Err(_) => return PromiseOrValue::Value(amount),
         };
 
-        // Validate everything except the incoming amount.
-        // We cannot use `validate_create_and_fund` blindly for the
-        // amount check because the caller-supplied `parsed.amount`
-        // must match the actual `amount` param; do the amount check
-        // explicitly after the shared validations.
+        // The message amount is the freelancer's project amount; the
+        // actual token transfer must also include the platform fee.
         if !self.configured || self.paused {
             return PromiseOrValue::Value(amount);
         }
@@ -653,12 +658,16 @@ impl EscrowContract {
         // would then have to refund via `ft_resolve_transfer`, which
         // is supported by our stub but not by every FT. Refunding
         // explicitly from `ft_on_transfer` is the safest behavior.
+        let expected_funding = parsed
+            .amount
+            .0
+            .checked_add(self.fee_for(parsed.amount.0, self.platform_fee_bps));
         let guard_ok = !parsed.escrow_id.trim().is_empty()
             && parsed.escrow_id.len() <= MAX_ESCROW_ID_LENGTH
             && self.used_ids.get(&parsed.escrow_id).is_none()
             && parsed.freelancer != client
             && parsed.amount.0 > 0
-            && parsed.amount.0 == amount.0
+            && expected_funding == Some(amount.0)
             && !parsed.title.trim().is_empty()
             && parsed.title.len() <= MAX_TITLE_LENGTH
             && parsed.description.len() <= MAX_DESCRIPTION_LENGTH
@@ -689,7 +698,7 @@ impl EscrowContract {
             client.clone(),
             parsed.freelancer.clone(),
             asset.clone(),
-            amount.0,
+            parsed.amount.0,
             parsed.title.clone(),
             parsed.description.clone(),
         );
@@ -705,7 +714,9 @@ impl EscrowContract {
             json!({
                 "escrow_id": parsed.escrow_id,
                 "asset": asset_name,
-                "amount": amount.0.to_string(),
+                "amount": parsed.amount.0.to_string(),
+                "funded_amount": amount.0.to_string(),
+                "platform_fee": self.fee_for(parsed.amount.0, self.platform_fee_bps).to_string(),
                 "client": client,
                 "freelancer": parsed.freelancer,
                 "token_contract": token_contract
@@ -792,12 +803,18 @@ impl EscrowContract {
     // ---------------------------------------------------------
 
     fn start_release(&mut self, mut escrow: Escrow) -> Promise {
-        let fee = self.fee_for(escrow.funded_amount, escrow.platform_fee_bps);
-
-        let payout = escrow
-            .funded_amount
-            .checked_sub(fee)
-            .expect("Payout calculation overflow");
+        // Escrows funded before client-paid fees were introduced have no
+        // stored funding fee; keep their original net-payout behavior.
+        let (fee, payout) = if escrow.platform_fee > 0 {
+            (escrow.platform_fee, escrow.amount)
+        } else {
+            let fee = self.fee_for(escrow.funded_amount, escrow.platform_fee_bps);
+            let payout = escrow
+                .funded_amount
+                .checked_sub(fee)
+                .expect("Payout calculation overflow");
+            (fee, payout)
+        };
 
         let operation_id = self.next_operation_id();
 
@@ -815,7 +832,8 @@ impl EscrowContract {
             json!({
                 "escrow_id": escrow.escrow_id,
                 "operation_id": operation_id,
-                "gross_amount": escrow.funded_amount.to_string(),
+                "gross_amount": escrow.amount.to_string(),
+                "funded_amount": escrow.funded_amount.to_string(),
                 "fee": fee.to_string(),
                 "payout": payout.to_string(),
                 "fee_bps": escrow.platform_fee_bps

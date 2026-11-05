@@ -1,5 +1,7 @@
 const GAS_NEAR = "100000000000000";
 const GAS_TOKEN = "200000000000000";
+const PLATFORM_FEE_BPS = 350n;
+const BASIS_POINTS = 10_000n;
 
 const APP_NETWORK = (
   import.meta.env.VITE_NEAR_NETWORK || "testnet"
@@ -53,6 +55,42 @@ export function normalizePreparation(input) {
     );
   }
 
+  const methodName = p.methodName ?? p.method ?? null;
+  let platformFee = p.platformFee ?? p.feeAmount ?? null;
+  let attachedDeposit = p.attachedDeposit ?? p.deposit ?? null;
+
+  if (
+    methodName === "create_and_fund_with_near" &&
+    isPositiveInteger(args.amount)
+  ) {
+    const projectAmount = BigInt(String(args.amount));
+    const calculatedFee = (projectAmount * PLATFORM_FEE_BPS) / BASIS_POINTS;
+    const calculatedDeposit = (projectAmount + calculatedFee).toString();
+
+    if (
+      platformFee != null &&
+      String(platformFee) !== calculatedFee.toString()
+    ) {
+      console.warn(
+        "[PayProof] Backend platform fee does not match the configured 3.5% fee; using the calculated fee.",
+        { platformFee, calculatedPlatformFee: calculatedFee.toString() }
+      );
+    }
+
+    if (
+      attachedDeposit != null &&
+      String(attachedDeposit) !== calculatedDeposit
+    ) {
+      console.warn(
+        "[PayProof] Backend attached deposit does not include the full platform fee; using the calculated total.",
+        { attachedDeposit, calculatedAttachedDeposit: calculatedDeposit }
+      );
+    }
+
+    platformFee = calculatedFee.toString();
+    attachedDeposit = calculatedDeposit;
+  }
+
   return {
     escrowId: p.escrowId ?? p.id ?? args.escrow_id ?? null,
     jobId: p.jobId ?? null,
@@ -68,12 +106,12 @@ export function normalizePreparation(input) {
       p.tokenContract ??
       p.tokenAddress ??
       null,
-    methodName: p.methodName ?? p.method ?? null,
+    methodName,
     args,
-    attachedDeposit: p.attachedDeposit ?? p.deposit ?? null,
+    attachedDeposit,
     gas: p.gas ?? null,
     decimals: p.decimals ?? p.tokenDecimals ?? null,
-    platformFee: p.platformFee ?? p.feeAmount ?? null,
+    platformFee,
     title: p.title ?? args.title ?? null,
     clientWalletAddress: p.clientWalletAddress ?? null,
     freelancerWalletAddress: p.freelancerWalletAddress ?? null,
@@ -188,21 +226,22 @@ export function validatePreparation(prep, expectedAccountId) {
 
     if (
       !isPositiveInteger(args.amount) ||
+      !isPositiveInteger(prep.platformFee) ||
       !isPositiveInteger(prep.attachedDeposit)
     ) {
       throw new WalletTxError(
         "failed",
-        "The prepared NEAR amount is not a valid whole number of yoctoNEAR."
+        "The prepared NEAR amount or platform fee is not a valid whole number of yoctoNEAR."
       );
     }
 
     if (
-      BigInt(String(args.amount)) !==
+      BigInt(String(args.amount)) + BigInt(String(prep.platformFee)) !==
       BigInt(String(prep.attachedDeposit))
     ) {
       throw new WalletTxError(
         "failed",
-        "The NEAR amount and attached deposit do not match."
+        "The project amount plus platform fee does not match the attached deposit."
       );
     }
 

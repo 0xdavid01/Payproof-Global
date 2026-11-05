@@ -12,8 +12,7 @@ import { useWallet } from "../context/WalletContext.jsx";
 import { createJob, uploadPrd, approveChecklist } from "../services/jobService.js";
 import { getJobId, getRequirements } from "../services/jobMapper.js";
 import { CURRENCIES, DEFAULT_CURRENCY } from "../services/currencies.js";
-
-const PLATFORM_FEE_RATE = 0.035;
+import { calculatePlatformFee } from "../services/fees.js";
 
 const NEXT_STEPS = [
   { title: "Freelancer reviews the PRD", text: "They accept or decline the invitation." },
@@ -65,7 +64,7 @@ export default function CreateProject() {
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const amount = Number(form.amount);
-  const fee = Number.isFinite(amount) ? amount * PLATFORM_FEE_RATE : 0;
+  const fee = calculatePlatformFee(amount);
 
   if (user?.role === "FREELANCER") {
     return (

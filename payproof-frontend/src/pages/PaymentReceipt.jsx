@@ -22,6 +22,7 @@ import {
   normalizeJob,
   toList,
 } from "../services/jobMapper.js";
+import { calculatePlatformFee } from "../services/fees.js";
 import {
   explorerTxUrl,
   NETWORK_LABEL,
@@ -82,6 +83,7 @@ export default function PaymentReceipt() {
   const { jobId } = useParams();
   const { user } = useAuth();
   const isFreelancer = user?.role === "FREELANCER";
+  const platformFee = calculatePlatformFee(job?.amount);
   const [job, setJob] = useState(null);
   const [submission, setSubmission] = useState(null);
   const [activities, setActivities] = useState([]);
@@ -323,16 +325,16 @@ export default function PaymentReceipt() {
                 <strong>{formatAmount(job.amount, job.currency)}</strong>
               </div>
               <div className="receipt-breakdown-row">
-                <span>Freelancer payout fee</span>
-                <strong>{formatAmount(0, job.currency)}</strong>
+                <span>Client platform fee · 3.5%</span>
+                <strong>{formatAmount(platformFee, job.currency)}</strong>
               </div>
               <div className="receipt-breakdown-row">
-                <span>Client project amount</span>
-                <strong>{formatAmount(job.amount, job.currency)}</strong>
+                <span>Total funded by client</span>
+                <strong>{formatAmount(Number(job.amount) + platformFee, job.currency)}</strong>
               </div>
               <p className="receipt-muted-note">
-                Network transaction fees are separate. No additional platform
-                fee is recorded for this release.
+                The freelancer receives the full project amount. Network
+                transaction fees are separate from the client platform fee.
               </p>
               <div className="receipt-actions">
                 <button

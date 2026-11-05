@@ -13,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
@@ -25,6 +26,8 @@ public class NearTransactionVerifier {
     private static final String ESCROW_METHOD = "create_and_fund_with_near";
     private static final String ESCROW_QUERY_METHOD = "get_escrow";
     private static final String RELEASE_METHOD = "approve_work";
+    private static final BigInteger PLATFORM_FEE_BPS = BigInteger.valueOf(350);
+    private static final BigInteger BASIS_POINTS = BigInteger.valueOf(10_000);
 
     private final ObjectMapper objectMapper;
 
@@ -350,7 +353,7 @@ public class NearTransactionVerifier {
                 );
             }
 
-            String expectedAmount = job.getEscrowCreationAmount();
+            String expectedAmount = toYoctoNear(job.getBudget());
 
             if (expectedAmount == null
                     || !expectedAmount.equals(args.path("amount").asText())) {
@@ -359,9 +362,12 @@ public class NearTransactionVerifier {
                 );
             }
 
-            if (!expectedAmount.equals(deposit)) {
+            String expectedFunding = totalFundingAmount(expectedAmount);
+
+            if (!expectedFunding.equals(deposit)
+                    || !expectedFunding.equals(job.getEscrowCreationAmount())) {
                 throw invalid(
-                        "The attached NEAR deposit does not match the escrow amount."
+                        "The attached NEAR deposit does not include the expected platform fee."
                 );
             }
 
@@ -455,11 +461,21 @@ public class NearTransactionVerifier {
             );
         }
 
-        if (!job.getEscrowCreationAmount().equals(
+        String expectedAmount = toYoctoNear(job.getBudget());
+        String expectedFunding = totalFundingAmount(expectedAmount);
+
+        if (!expectedAmount.equals(
                 escrow.path("amount").asText()
         )) {
             throw invalid(
                     "The on-chain amount does not match the reservation."
+            );
+        }
+
+        if (!expectedFunding.equals(escrow.path("funded_amount").asText())
+                || !expectedFunding.equals(job.getEscrowCreationAmount())) {
+            throw invalid(
+                    "The on-chain funded amount does not match the project amount and platform fee."
             );
         }
 
@@ -470,6 +486,21 @@ public class NearTransactionVerifier {
                     "The on-chain escrow uses a different asset."
             );
         }
+
+    }
+
+    private String totalFundingAmount(String projectAmount) {
+        BigInteger grossAmount = new BigInteger(projectAmount);
+        BigInteger fee = grossAmount
+                .multiply(PLATFORM_FEE_BPS)
+                .divide(BASIS_POINTS);
+        return grossAmount.add(fee).toString();
+    }
+
+    private String toYoctoNear(java.math.BigDecimal amount) {
+        return amount.multiply(new java.math.BigDecimal("1000000000000000000000000"))
+                .toBigIntegerExact()
+                .toString();
     }
 
     private JsonNode rpcCall(

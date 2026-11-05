@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -31,6 +32,8 @@ public class EscrowCreationService {
             new BigDecimal("1000000000000000000000000");
 
     private static final String NEAR_GAS = "100000000000000";
+    private static final BigInteger PLATFORM_FEE_BPS = BigInteger.valueOf(350);
+    private static final BigInteger BASIS_POINTS = BigInteger.valueOf(10_000);
 
     private final JobRepository jobRepository;
     private final WalletRepository walletRepository;
@@ -91,6 +94,7 @@ public class EscrowCreationService {
         }
 
         String amount = toYoctoNear(job.getBudget());
+        String totalFunding = totalFundingAmount(amount);
 
         if (job.getEscrowCreationStatus() == EscrowCreationStatus.CONFIRMED) {
             throw new ResponseStatusException(
@@ -109,11 +113,17 @@ public class EscrowCreationService {
 
             if (!clientWallet.equals(job.getEscrowCreationClientWallet())
                     || !freelancerWallet.equals(job.getEscrowCreationFreelancerWallet())
-                    || !amount.equals(job.getEscrowCreationAmount())) {
+                    || (!totalFunding.equals(job.getEscrowCreationAmount())
+                    && !amount.equals(job.getEscrowCreationAmount()))) {
                 throw new ResponseStatusException(
                         HttpStatus.CONFLICT,
-                        "The existing reservation does not match the current wallets or project amount."
+                        "The existing reservation does not match the current wallets or funding amount."
                 );
+            }
+
+            if (!totalFunding.equals(job.getEscrowCreationAmount())) {
+                job.setEscrowCreationAmount(totalFunding);
+                jobRepository.saveAndFlush(job);
             }
 
             return buildNearPreparation(
@@ -121,7 +131,8 @@ public class EscrowCreationService {
                     job.getEscrowCreationId(),
                     clientWallet,
                     freelancerWallet,
-                    amount
+                    amount,
+                    totalFunding
             );
         }
 
@@ -133,12 +144,12 @@ public class EscrowCreationService {
         job.setEscrowCreationTransactionHash(null);
         job.setEscrowCreationClientWallet(clientWallet);
         job.setEscrowCreationFreelancerWallet(freelancerWallet);
-        job.setEscrowCreationAmount(amount);
+        job.setEscrowCreationAmount(totalFunding);
 
         jobRepository.saveAndFlush(job);
 
         return buildNearPreparation(
-                job, escrowId, clientWallet, freelancerWallet, amount
+                job, escrowId, clientWallet, freelancerWallet, amount, totalFunding
         );
     }
 
@@ -204,8 +215,15 @@ public class EscrowCreationService {
             String escrowId,
             String clientWallet,
             String freelancerWallet,
-            String amount
+            String amount,
+            String totalFunding
     ) {
+        BigInteger grossAmount = new BigInteger(amount);
+        String platformFee = grossAmount
+                .multiply(PLATFORM_FEE_BPS)
+                .divide(BASIS_POINTS)
+                .toString();
+
         Map<String, Object> args = Map.of(
                 "escrow_id", escrowId,
                 "freelancer", freelancerWallet,
@@ -224,13 +242,22 @@ public class EscrowCreationService {
                 .freelancerWalletAddress(freelancerWallet)
                 .asset("Near")
                 .amount(amount)
-                .attachedDeposit(amount)
+                .platformFee(platformFee)
+                .attachedDeposit(totalFunding)
                 .gas(NEAR_GAS)
                 .args(args)
                 .title(job.getTitle())
                 .description(job.getDescription())
-                .message("Sign this transaction with your NEAR wallet to create and fund the escrow.")
+                .message("The attached deposit includes the project amount and the 3.5% client platform fee.")
                 .build();
+    }
+
+    private String totalFundingAmount(String projectAmount) {
+        BigInteger amount = new BigInteger(projectAmount);
+        BigInteger fee = amount
+                .multiply(PLATFORM_FEE_BPS)
+                .divide(BASIS_POINTS);
+        return amount.add(fee).toString();
     }
 
     @Transactional

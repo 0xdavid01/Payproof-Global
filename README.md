@@ -2,7 +2,7 @@
 
 PayProof is a project and payment workflow for clients and freelancers. It brings project briefs, requirements, agreements, work submissions, and escrow funding together in a web application backed by a Spring Boot API and NEAR smart contracts.
 
-The codebase contains a React client, a Java API, and a Rust Cargo workspace. They are separate projects: there is no root-level command that builds or starts all three.
+The codebase contains a React application, a separate React marketing site, a Java API, and a Rust Cargo workspace. They are four separate projects: there is no root-level command that builds or starts all four.
 
 > **Implementation note:** This README distinguishes implemented behavior from partial integrations and known gaps. In particular, AI currently extracts a checklist from a project brief; it does not assess submitted work or make payment decisions.
 
@@ -41,7 +41,7 @@ The implemented workflow is:
 3. The client can upload a PDF project requirements document (PRD). The backend extracts its text and asks DeepSeek to return a checklist. The client may approve the checklist; approval moves the project into freelancer acceptance.
 4. The invited freelancer accepts or declines. After acceptance, the freelancer uploads an agreement PDF. Both participants approve the current agreement version; the client may request changes.
 5. Before both participants approve the agreement, the client can update the budget and currency. Changing financial terms invalidates existing agreement approvals.
-6. Once the agreement is approved and NEAR wallets are linked, the client can request escrow transaction parameters and sign the funding transaction with a NEAR wallet.
+6. Once the agreement is approved and NEAR wallets are linked, the client can request escrow transaction parameters and sign the funding transaction with a NEAR wallet. For NEAR, the client funds the project amount plus a 3.5% platform fee; the freelancer receives the full project amount on release.
 7. The freelancer submits work in the web application as a file or external URL, with optional notes. The backend stores submission versions and snapshots the approved checklist. The frontend also exposes a separate on-chain `submit_work` action with an evidence string.
 8. The client reviews the submission and its checklist items. Approval requires a successful on-chain release transaction hash, verified by the backend against NEAR. Requested changes allow a subsequent submission version.
 9. The application records activity and sends email notifications for selected submission/review/payout events.
@@ -65,6 +65,7 @@ Refunds and disputes are available as methods in the escrow contract, but the ba
 | Refund/dispute operations | Contract methods implemented; REST/UI integration incomplete | Escrow contract exposes refund and dispute methods. There are no matching backend controller routes in this checkout. |
 | Activity and email notifications | Implemented for selected events | Project activities are persisted and listed. Resend emails are emitted for submission, requested changes, and payout notifications, as well as OTP sign-in. |
 | Payment receipt | Partial | A receipt page/route exists in the frontend. A dedicated receipt API endpoint is not defined by the current controllers. |
+| Public marketing site | Implemented separately | `payproof-landing-page/` is a standalone React/Vite site. Its sign-up and login links point to the hosted application; the landing site does not call the backend. |
 | Google/NEAR sign-in alternatives | Partial | The backend implements Google OAuth and wallet linking; the frontend wallet sign-in button currently reports that wallet sign-in is unavailable. Wallet linking is separate from authentication. |
 
 ## Technology stack
@@ -72,6 +73,7 @@ Refunds and disputes are available as methods in the escrow contract, but the ba
 | Layer | Technology found in the repository |
 |---|---|
 | Frontend | React `19.3.1`, JavaScript modules, React Router `7.18.5`, Vite `8.3.5`, Lucide React |
+| Public marketing site | Separate React `19.3.1` and Vite `8.3.6` app in `payproof-landing-page/` |
 | NEAR frontend | NEAR Wallet Selector `10.1.4` packages, `near-api-js` `6.5.1`, Meteor Wallet module |
 | Backend | Java, Spring Boot `4.2.0-SNAPSHOT`, Spring MVC, Spring Security, Spring Data JPA, Maven |
 | Database | PostgreSQL, Hibernate/JPA; JDBC-backed Spring Session |
@@ -150,6 +152,11 @@ The browser interacts directly with NEAR for wallet-signed funding, work-submiss
 ```text
 payproof-platform/
 ├── README.md
+├── payproof-landing-page/       # Standalone public React/Vite marketing site
+│   ├── package.json
+│   ├── index.html
+│   ├── public/
+│   └── src/
 ├── payproof/
 │   ├── Dockerfile
 │   ├── .mvn/
@@ -211,8 +218,9 @@ The repository root has no `.gitmodules` file; `near_hackathon/` is a directory 
 | AI and object storage | [`DeepSeekService.java`](payproof/src/main/java/com/example/payproof/service/DeepSeekService.java), [`R2StorageService.java`](payproof/src/main/java/com/example/payproof/service/R2StorageService.java) |
 | Wallet challenge and verification | [`WalletAuthService.java`](payproof/src/main/java/com/example/payproof/service/WalletAuthService.java), [`NearSignatureVerifier.java`](payproof/src/main/java/com/example/payproof/service/NearSignatureVerifier.java) |
 | Frontend routes, API and NEAR configuration | [`App.jsx`](payproof-frontend/src/App.jsx), [`api.js`](payproof-frontend/src/services/api.js), [`escrowService.js`](payproof-frontend/src/services/escrowService.js), [`vite.config.js`](payproof-frontend/vite.config.js) |
+| Public landing site | [`App.jsx`](payproof-landing-page/src/App.jsx), [`index.html`](payproof-landing-page/index.html), [`package.json`](payproof-landing-page/package.json) |
 | Contract workspace and pinned Rust toolchain | [`near_hackathon/Cargo.toml`](near_hackathon/Cargo.toml), [`rust-toolchain.toml`](near_hackathon/rust-toolchain.toml) |
-| Contract implementations and tests | [`escrow contract`](near_hackathon/contracts/escrow/src/lib.rs), [`admin contract`](near_hackathon/contracts/admin/src/lib.rs), [`test token`](near_hackathon/contracts/usdt-stub/src/lib.rs), [`escrow tests`](near_hackathon/contracts/escrow/tests/escrow_tests.rs), [`admin tests`](near_hackathon/contracts/admin/tests/admin_tests.rs) |
+| Contract implementations and tests | [`escrow contract`](near_hackathon/contracts/escrow/src/lib.rs), [`admin contract`](near_hackathon/contracts/admin/src/lib.rs), [`test token`](near_hackathon/contracts/usdt-stub/src/lib.rs), [`escrow tests`](near_hackathon/contracts/escrow/tests/escrow_tests.rs), [`escrow fee tests`](near_hackathon/contracts/escrow/tests/escrow_fee_tests.rs), [`admin tests`](near_hackathon/contracts/admin/tests/admin_tests.rs) |
 
 ## Prerequisites
 
@@ -221,7 +229,7 @@ The repository root has no `.gitmodules` file; `near_hackathon/` is a directory 
 | Component | Requirement verified from configuration |
 |---|---|
 | Backend | Java `27` is declared in `payproof/pom.xml`. Use the included Maven Wrapper (`mvnw` / `mvnw.cmd`); a separate Maven install is not required. |
-| Frontend | Node.js `^20.19.0` or `>=22.12.0` and npm are required by the Vite `8.3.5` engine metadata in `package-lock.json`. `package.json` does not pin an npm version; no `.nvmrc` is present. |
+| Frontends | Node.js `^20.19.0` or `>=22.12.0` and npm are required by the Vite `8.3.5`/`8.3.6` engine metadata in the two frontend lockfiles. Neither package pins an npm version. |
 | Rust contracts | `rust-toolchain.toml` pins Rust `1.93.0`, with `rustfmt`, `clippy`, and the `wasm32-unknown-unknown` target. Cargo is installed with the Rust toolchain. |
 | API data/session storage | PostgreSQL is required by the configured datasource and JDBC session store. |
 | NEAR contract build/deploy | `cargo-near` is used by the checked-in contract CI workflows. `near-cli-rs` is used for the staging-account cleanup/deployment workflow. |
@@ -305,7 +313,11 @@ VITE_ESCROW_CONTRACT_ID=replace-with-your-testnet-escrow-contract
 
 With `VITE_BACKEND_ORIGIN` unset, the development proxy in `vite.config.js` sends `/api`, `/oauth2`, and `/login/oauth2` to a hosted backend. Set the origin explicitly when working against a local API. Restart Vite after changing environment variables. Do not put secret keys in `VITE_*` variables: they are bundled into browser code.
 
-### 3. Rust contracts
+### 3. Public landing page
+
+The marketing site has no backend or Vite environment variables. Its login and sign-up links are set to `https://app.payproof.site` in `payproof-landing-page/src/App.jsx`; change that constant when testing against a different application origin.
+
+### 4. Rust contracts
 
 The contracts do not read a project `.env` file. Their initial configuration is supplied as initialization arguments, and the admin contract stores its treasury, resolver, token contract IDs, and fee in contract state. Build/deployment network and account configuration is provided to `cargo near`/NEAR CLI commands or GitHub Actions variables and secrets.
 
@@ -369,7 +381,27 @@ npm run dev
 
 Open the local URL printed by Vite (the configured port is `5173`). Set `VITE_BACKEND_ORIGIN` to the local API if you do not want to use the configured hosted-backend proxy. The API currently marks session cookies `Secure` and `SameSite=None`; verify browser cookie behavior and origins in your local setup.
 
-### 5. Build and test the contracts
+### 5. Install and run the public landing page
+
+The marketing site is independent of the authenticated application and can be run without the API:
+
+```powershell
+Set-Location payproof-landing-page
+npm ci
+npm run dev
+```
+
+macOS/Linux:
+
+```bash
+cd payproof-landing-page
+npm ci
+npm run dev
+```
+
+The landing page's login and sign-up buttons still link to the hosted application unless `signupUrl` in `src/App.jsx` is changed.
+
+### 6. Build and test the contracts
 
 From `near_hackathon/`:
 
@@ -499,7 +531,9 @@ Review request fields are `status`, optional `feedback` (max 10,000 characters),
 
 The backend controller has **no `GET /api/escrows/job/{jobId}` route**. The frontend currently calls that path from `getEscrowForJob`; this API/UI mismatch is documented under [Known limitations](#known-limitations).
 
-`CreateEscrowResponse` contains `escrowId`, `jobId`, `network`, `contractId`, `tokenContractId`, `methodName`, `clientWalletAddress`, `freelancerWalletAddress`, `asset`, `amount`, `attachedDeposit`, `gas`, `args`, `title`, `description`, and `message`. The backend currently prepares a `create_and_fund_with_near` call; `args` contains the on-chain escrow ID, freelancer account, amount, title, and description.
+`CreateEscrowResponse` contains `escrowId`, `jobId`, `network`, `contractId`, `tokenContractId`, `methodName`, `clientWalletAddress`, `freelancerWalletAddress`, `asset`, `amount`, `platformFee`, `attachedDeposit`, `gas`, `args`, `title`, `description`, and `message`. For NEAR, `amount` and `args.amount` are the project amount payable to the freelancer, `platformFee` is the 3.5% client fee, and `attachedDeposit` is their sum.
+
+The frontend validates the preparation and derives the NEAR fee/deposit in yoctoNEAR before signing, so it does not rely on a stale or inconsistent saved deposit. The backend independently verifies the transaction value and fee against the job amount. Both currently use a fixed 350 basis points; keep that value synchronized with the deployed escrow contract configuration.
 
 ### Activity
 
@@ -511,6 +545,7 @@ The backend controller has **no `GET /api/escrows/job/{jobId}` route**. The fron
 
 - The backend uses `HttpSessionSecurityContextRepository`; sessions are stored through Spring Session JDBC and expire after 30 minutes as configured.
 - The frontend uses `fetch` with `credentials: "include"`. It requests `/api/csrf` and sends `X-XSRF-TOKEN` for state-changing requests, except login and registration, which the API explicitly exempts.
+- Wallet-signature verification errors are also returned as `401`; the frontend handles that endpoint without treating an invalid wallet signature as an expired PayProof session.
 - The backend configures session cookies with `SameSite=None` and `Secure=true`, and allows credentials only for origins listed in `SecurityConfig`.
 - Most unauthenticated API requests receive HTTP `401`; role/ownership failures are generally `403`, unavailable resources `404`, and invalid workflow transitions often `400` or `409`. Specific validations are described above; consult the controller/service for exact messages.
 - This is a controller-derived overview, not an OpenAPI specification. Not every entity serialization detail or error response is fixed by a dedicated API schema.
@@ -534,10 +569,10 @@ Support in the contract does not mean support in every product layer: backend re
 
 | Method | Contract-level behavior |
 |---|---|
-| `create_and_fund_with_near` | Payable atomic NEAR escrow creation and funding. The attached deposit must exactly match `amount`; caller becomes client. |
+| `create_and_fund_with_near` | Payable atomic NEAR escrow creation and funding. `amount` is the project amount; the attached deposit must equal `amount` plus the platform fee. Caller becomes client. |
 | `ft_on_transfer` | Accepts a JSON create-and-fund message for configured USDT/USDC contracts; invalid/unconfigured/paused calls return the transferred amount. |
 | `submit_work` | Freelancer-only while escrow is funded; stores an evidence string (up to 10,000 bytes/characters as checked by Rust `String::len`) and moves status to `WorkSubmitted`. |
-| `approve_work` | Client-only after work submission; initiates transfer to freelancer less platform fee. |
+| `approve_work` | Client-only after work submission; pays the freelancer the full project amount and accrues the client-paid platform fee. |
 | `request_refund` | Client-only in `Funded` or `WorkSubmitted`; records a refund request as `Disputed` but does not itself transfer funds. |
 | `raise_dispute` | Client or freelancer may raise a dispute in `Funded` or `WorkSubmitted`. |
 | `resolve_dispute` | Configured dispute resolver decides whether to release to freelancer or refund client. |
@@ -547,7 +582,7 @@ Support in the contract does not mean support in every product layer: backend re
 
 Statuses in source are `AwaitingFunding` (retained for compatibility), `Funded`, `WorkSubmitted`, `Disputed`, `Releasing`, `Refunding`, `SettlementFailed`, `Released`, and `Refunded`. The current atomic creation paths persist newly funded escrows directly as `Funded`.
 
-**Fees and settlement:** fee basis points default to `350` (3.5%) and are capped at `1,000` (10%). On release, the contract calculates the fee against the funded amount, transfers the remainder to the freelancer, and accrues the fee for treasury withdrawal. A refund transfers the funded amount back to the client. Transfers use asynchronous promises and private callbacks to update settlement status; failed callbacks record a failed settlement for retry.
+**Fees and settlement:** fee basis points default to `350` (3.5%) and are capped at `1,000` (10%). The client funds the project amount plus the fee. The freelancer receives the full project amount on release, and the fee is accrued for treasury withdrawal. A refund transfers the full funded amount back to the client. Transfers use asynchronous promises and private callbacks to update settlement status; failed callbacks record a failed settlement for retry.
 
 Many state-changing methods require an attached one yoctoNEAR deposit; caller identity, state, pause status, configured-contract identity, and input bounds are checked in contract methods. Read the source and tests before deploying or changing these rules.
 
@@ -690,6 +725,11 @@ Set-Location ..\payproof-frontend
 npm run lint
 npm run build
 
+# Public landing page
+Set-Location ..\payproof-landing-page
+npm run lint
+npm run build
+
 # Rust workspace
 Set-Location ..\near_hackathon
 cargo test --workspace
@@ -700,11 +740,15 @@ cargo clippy --all-features --workspace --tests -- --warn clippy::all --warn cli
 macOS/Linux equivalents use `./mvnw test`; the npm and Cargo commands are the same.
 
 - Backend test source currently contains a Spring application-context smoke test (`PayproofApplicationTests`); it is not a broad suite of endpoint/business-logic tests.
-- No frontend test script or frontend test files were found in the package/source inventory. `npm run lint` runs Oxlint and `npm run build` runs Vite.
+- Neither React app has a configured test script or frontend test files in the package/source inventory. Each app's `npm run lint` runs Oxlint and `npm run build` runs Vite.
 - Rust has escrow/admin unit tests under each contract's `tests/` directory. CI invokes Cargo formatting, Clippy, and tests.
 - Tests and builds were not run while preparing this documentation; the commands above describe configured scripts/workflows, not passing results.
 
 ## Deployment
+
+### Public landing page
+
+`payproof-landing-page/package.json` provides `npm run build` and `npm run preview`. Publish its generated `dist/` output to static hosting. Update `signupUrl` in `src/App.jsx` if the production application is hosted at a different origin. No landing-page deployment workflow or hosting configuration was found.
 
 ### Frontend
 
@@ -756,16 +800,18 @@ This section summarizes source-level controls and operational risks; it is not a
 
 1. **Escrow lookup endpoint mismatch:** `payproof-frontend/src/services/escrowService.js` calls `GET /api/escrows/job/{jobId}`, but `EscrowController` has no GET endpoint for that route. The feature can fail unless the API gains a matching implementation or the client is changed.
 2. **Escrow asset support differs by layer:** contract code supports NEAR and configured NEP-141 USDT/USDC, but `EscrowCreationService` currently returns `501` unless the job currency is NEAR.
-3. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
-4. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
-5. **Refund/dispute API/UI gap:** contract methods exist, but the backend controller exposes no refund/dispute REST operations.
-6. **Docker Java version mismatch:** Maven declares Java 27; `payproof/Dockerfile` uses Java 21.
-7. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
-8. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
-9. **Test coverage:** backend contains a context-load smoke test and frontend has no configured test runner/script in `package.json`. Contract tests exist, but were not run for this documentation change.
-10. **Deployment state is unverified:** checked-in properties/workflows provide configuration paths, but no live database, provider credentials, deployed contract state, or successful release was verified here.
-11. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
-12. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
+3. **Platform fee configuration must stay synchronized:** the backend and frontend currently calculate a fixed 3.5% fee, while the admin contract can configure a different fee up to 10%. A different on-chain rate will make funding transactions fail until the application and contract agree.
+4. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
+5. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
+6. **Refund/dispute API/UI gap:** contract methods exist, but the backend controller exposes no refund/dispute REST operations.
+7. **Docker Java version mismatch:** Maven declares Java 27; `payproof/Dockerfile` uses Java 21.
+8. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
+9. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
+10. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this documentation change.
+11. **Deployment state is unverified:** checked-in properties/workflows provide configuration paths, but no live database, provider credentials, deployed contract state, or successful release was verified here.
+12. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
+13. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
+14. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or dispute REST/UI workflow. Treat that copy as aspirational, not as shipped functionality.
 
 ### Features not represented as implemented
 
@@ -787,3 +833,10 @@ Do not include real `.env` files, API keys, cloud credentials, or wallet private
 ## License
 
 No `LICENSE` file or license declaration was found in the repository directories inspected. No license is specified here; confirm the project's licensing before redistribution or external use.
+
+## Domain roles
+
+- `payproof.site` is the public-facing brand/contact domain referenced by the landing page's `hello@payproof.site` email links. This repository does not include DNS or hosting configuration confirming where the apex domain is served.
+- `app.payproof.site` is the hosted application URL configured as the landing page's login and sign-up destination in `payproof-landing-page/src/App.jsx`.
+
+In short, the landing page promotes PayProof; users follow its login or sign-up links to the application. Update the landing page's `signupUrl` if the application domain changes.

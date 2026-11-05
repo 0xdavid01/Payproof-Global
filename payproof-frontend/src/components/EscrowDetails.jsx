@@ -3,9 +3,12 @@ import Card from "./Card.jsx";
 import EscrowStatusBadge from "./EscrowStatusBadge.jsx";
 import { formatAmount } from "../services/jobMapper.js";
 import { explorerTxUrl, NETWORK_LABEL } from "../services/escrowService.js";
+import { calculatePlatformFee } from "../services/fees.js";
 
 export default function EscrowDetails({ job, escrow, txHash }) {
   const hash = escrow?.txHash || txHash;
+  const platformFee = calculatePlatformFee(job.amount);
+  const totalFunded = Number(job.amount) + platformFee;
 
   return (
     <Card title="Escrow details">
@@ -16,8 +19,16 @@ export default function EscrowDetails({ job, escrow, txHash }) {
       <div className="kv"><span>Escrow ID</span><strong>{escrow?.escrowId || "—"}</strong></div>
       <div className="kv"><span>Project</span><strong>{job.title}</strong></div>
       <div className="kv">
-        <span>Funded amount</span>
+        <span>Project amount</span>
         <strong>{formatAmount(job.amount, job.currency)}</strong>
+      </div>
+      <div className="kv">
+        <span>Client platform fee · 3.5%</span>
+        <strong>{formatAmount(platformFee, job.currency)}</strong>
+      </div>
+      <div className="kv">
+        <span>Total funded</span>
+        <strong>{formatAmount(totalFunded, job.currency)}</strong>
       </div>
       <div className="kv">
         <span>Freelancer</span>
