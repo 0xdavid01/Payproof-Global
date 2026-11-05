@@ -3,6 +3,7 @@ package com.example.payproof.config;
 import com.example.payproof.service.GoogleOAuth2UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -27,6 +28,9 @@ import java.util.function.Supplier;
 
 @Configuration
 public class SecurityConfig {
+
+    @Value("${payproof.frontend-url:https://app.payproof.site}")
+    private String frontendUrl;
 
     private final GoogleOAuth2UserService googleOAuth2UserService;
 
@@ -87,6 +91,14 @@ public class SecurityConfig {
                 )
 
                 .oauth2Login(oauth2 -> oauth2
+                        .defaultSuccessUrl(
+                                frontendUrl.replaceAll("/+$", "") + "/overview",
+                                true
+                        )
+                        .failureUrl(
+                                frontendUrl.replaceAll("/+$", "")
+                                        + "/login?google=error"
+                        )
                         .userInfoEndpoint(userInfo -> userInfo
                                 .oidcUserService(googleOAuth2UserService)
                         )

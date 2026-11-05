@@ -27,6 +27,8 @@ export default function Login() {
 
   const notice = location.state?.notice;
   const redirectTo = location.state?.from?.pathname || "/overview";
+  const googleLoginError =
+    new URLSearchParams(location.search).get("google") === "error";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -131,6 +133,11 @@ export default function Login() {
 
       <form onSubmit={handleSubmit} className={`auth-form${otpStep ? " otp-form" : ""}`}>
         {notice && <div className="form-notice">{notice}</div>}
+        {googleLoginError && !error && (
+          <div className="form-error" role="alert">
+            Google sign-in could not be completed. Please try again or sign in with email.
+          </div>
+        )}
         {error && <div className="form-error">{error}</div>}
 
         {!otpStep ? (

@@ -83,7 +83,6 @@ export default function PaymentReceipt() {
   const { jobId } = useParams();
   const { user } = useAuth();
   const isFreelancer = user?.role === "FREELANCER";
-  const platformFee = calculatePlatformFee(job?.amount);
   const [job, setJob] = useState(null);
   const [submission, setSubmission] = useState(null);
   const [activities, setActivities] = useState([]);
@@ -92,6 +91,7 @@ export default function PaymentReceipt() {
   const [agreementError, setAgreementError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const platformFee = calculatePlatformFee(job?.amount);
 
   const loadReceipt = useCallback(async () => {
     setLoading(true);

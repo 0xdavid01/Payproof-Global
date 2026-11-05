@@ -264,6 +264,7 @@ The following variables are referenced by `application.properties`:
 | `RESEND_API_KEY` | Optional at configuration binding; required to send email | Resend bearer API key. If absent, email sending fails and OTP delivery cannot complete. |
 | `RESEND_FROM` | Optional | Sender string; the properties file supplies a default. Configure a sender/domain allowed by Resend. |
 | `PAYPROOF_APP_URL` | Optional | Base URL used in notification links; the properties file supplies a default. |
+| `PAYPROOF_FRONTEND_URL` | Optional | Destination after Google OAuth succeeds; defaults to `https://app.payproof.site`. Set to `http://localhost:5173` for local development. |
 | `NEAR_USDT_CONTRACT_ID` | Optional | Overrides the testnet USDT-contract default. This is a contract account ID, not a secret. |
 
 Example with placeholders only:
@@ -286,6 +287,7 @@ DEEPSEEK_API_KEY=replace-with-deepseek-api-key
 RESEND_API_KEY=replace-with-resend-api-key
 RESEND_FROM=PayProof <no-reply@example.com>
 PAYPROOF_APP_URL=http://localhost:5173/
+PAYPROOF_FRONTEND_URL=http://localhost:5173
 
 # Optional testnet contract override:
 NEAR_USDT_CONTRACT_ID=replace-with-testnet-token-account
@@ -311,7 +313,7 @@ VITE_NEAR_NETWORK=testnet
 VITE_ESCROW_CONTRACT_ID=replace-with-your-testnet-escrow-contract
 ```
 
-With `VITE_BACKEND_ORIGIN` unset, the development proxy in `vite.config.js` sends `/api`, `/oauth2`, and `/login/oauth2` to a hosted backend. Set the origin explicitly when working against a local API. Restart Vite after changing environment variables. Do not put secret keys in `VITE_*` variables: they are bundled into browser code.
+With `VITE_BACKEND_ORIGIN` unset, API requests default to `http://localhost:8080`; set it to the hosted API origin when using the live backend. Restart Vite after changing environment variables. Do not put secret keys in `VITE_*` variables: they are bundled into browser code. Add the backend callback URL to the Google Cloud OAuth client's authorized redirect URIs: `http://localhost:8080/login/oauth2/code/google` locally and the corresponding HTTPS backend URL in production.
 
 ### 3. Public landing page
 
@@ -359,7 +361,7 @@ cd payproof
 ./mvnw spring-boot:run
 ```
 
-By default the API listens on port `8080`. The datasource URL and credentials must refer to a reachable PostgreSQL instance.
+By default the API listens on port `8080`. The datasource URL and credentials must refer to a reachable PostgreSQL instance. Set `PAYPROOF_FRONTEND_URL=http://localhost:5173` in `payproof/.env` so successful Google sign-in returns to the local app; the default destination is the deployed app at `https://app.payproof.site`.
 
 ### 4. Install and run the frontend
 
