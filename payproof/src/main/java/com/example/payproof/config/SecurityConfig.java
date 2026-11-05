@@ -172,7 +172,7 @@ public class SecurityConfig {
                         "https://payproof.site",
                         "https://www.payproof.site",
                         "https://app.payproof.site",
-                        "https://your-project.vercel.app"
+                        "https://payprooffrontend-nu.vercel.app"
                 )
         );
 
