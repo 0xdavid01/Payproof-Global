@@ -7,7 +7,7 @@ export class ApiError extends Error {
   }
 }
 
-export const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "";
+export const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "http://localhost:8080";
 
 // Only these POSTs skip the CSRF token (there is no session yet when they run).
 // Every other request that changes data, including the wallet endpoints and logout, sends it.
