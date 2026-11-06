@@ -2026,4 +2026,3 @@ No `LICENSE` file or license declaration was found in the repository directories
 - `app.payproof.site` serves the client/freelancer web application in `payproof-frontend/`. The landing page's login and sign-up links point here.
 
 The landing page promotes PayProof, while clients and freelancers use the app subdomain to manage projects and escrow. Update `signupUrl` in `payproof-landing-page/src/App.jsx` if the application domain changes.
->>>>>>> 68d2fec (updated enpoint)
