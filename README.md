@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # PayProof Platform
 
 PayProof is a project and payment workflow for clients and freelancers. It brings project briefs, requirements, agreements, work submissions, and escrow funding together in a web application backed by a Spring Boot API and NEAR smart contracts.
