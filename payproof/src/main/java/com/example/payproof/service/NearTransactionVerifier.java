@@ -451,6 +451,44 @@ public class NearTransactionVerifier {
         return "Released".equalsIgnoreCase(escrow.path("status").asText());
     }
 
+    public JsonNode getEscrowState(String escrowId) {
+        if (escrowId == null || escrowId.isBlank()) {
+            throw invalid("The escrow ID is required.");
+        }
+
+        String args = objectMapper.writeValueAsString(Map.of("escrow_id", escrowId));
+        String encodedArgs = Base64.getEncoder().encodeToString(
+                args.getBytes(StandardCharsets.UTF_8)
+        );
+        JsonNode result = rpcCall(
+                "query",
+                Map.of(
+                        "request_type", "call_function",
+                        "finality", "final",
+                        "account_id", escrowContractId,
+                        "method_name", ESCROW_QUERY_METHOD,
+                        "args_base64", encodedArgs
+                )
+        );
+
+        JsonNode bytes = result.path("result");
+        if (!bytes.isArray()) {
+            throw unavailable("The escrow contract returned an invalid response.");
+        }
+
+        byte[] data = new byte[bytes.size()];
+        for (int i = 0; i < bytes.size(); i++) {
+            data[i] = (byte) bytes.get(i).asInt();
+        }
+
+        try {
+            JsonNode escrow = objectMapper.readTree(new String(data, StandardCharsets.UTF_8));
+            return escrow == null || escrow.isNull() ? null : escrow;
+        } catch (Exception exception) {
+            throw unavailable("The escrow contract response could not be parsed.");
+        }
+    }
+
     private void verifyFunctionCall(
             JsonNode transaction,
             JobModel job,

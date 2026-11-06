@@ -14,6 +14,12 @@ public interface SubmissionReviewRepository
             UUID submissionVersionId
     );
 
+    Optional<SubmissionReview>
+    findFirstBySubmissionVersion_Submission_Job_JobIdAndStatusOrderByReviewedAtDesc(
+            String jobId,
+            SubmissionReviewStatus status
+    );
+
     boolean existsBySubmissionVersion_IdAndStatus(
             UUID submissionVersionId,
             SubmissionReviewStatus status
