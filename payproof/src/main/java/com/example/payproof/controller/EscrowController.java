@@ -5,6 +5,7 @@ import com.example.payproof.dto.request.ConfirmEscrowRequest;
 import com.example.payproof.dto.request.CreateEscrowCaseRequest;
 import com.example.payproof.dto.request.CreateEscrowRequest;
 import com.example.payproof.dto.response.CreateEscrowResponse;
+import com.example.payproof.dto.response.EscrowDetailsResponse;
 import com.example.payproof.dto.response.EscrowDisputeCaseResponse;
 import com.example.payproof.enums.EscrowCaseType;
 import com.example.payproof.model.JobModel;
@@ -14,6 +15,7 @@ import com.example.payproof.repository.UserRepository;
 import com.example.payproof.security.CustomUserPrincipal;
 import com.example.payproof.service.EscrowCreationService;
 import com.example.payproof.service.EscrowDisputeCaseService;
+import com.example.payproof.service.EscrowQueryService;
 import com.example.payproof.service.NearTransactionVerifier;
 import com.example.payproof.service.SubmissionService;
 import jakarta.validation.Valid;
@@ -36,6 +38,7 @@ public class EscrowController {
     private final NearTransactionVerifier nearTransactionVerifier;
     private final SubmissionService submissionService;
     private final EscrowDisputeCaseService escrowDisputeCaseService;
+    private final EscrowQueryService escrowQueryService;
     private final UserRepository userRepository;
     private final JobRepository jobRepository;
 
@@ -106,6 +109,15 @@ public class EscrowController {
                         "isFunded", true
                 )
         );
+    }
+
+    @GetMapping("/job/{jobId}")
+    public ResponseEntity<EscrowDetailsResponse> getEscrowForJob(
+            @PathVariable String jobId,
+            @AuthenticationPrincipal CustomUserPrincipal principal
+    ) {
+        UserModel user = authenticatedUser(principal);
+        return ResponseEntity.ok(escrowQueryService.getEscrowForJob(jobId, user));
     }
 
     @PostMapping("/jobs/{jobId}/reconcile-release")

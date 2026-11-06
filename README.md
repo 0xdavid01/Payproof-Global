@@ -4,6 +4,15 @@ PayProof is a project and payment workflow for clients and freelancers. It bring
 
 The codebase contains a React application, a separate React marketing site, a Java API, and a Rust Cargo workspace. They are four separate projects: there is no root-level command that builds or starts all four.
 
+## Live demo
+
+- App: [app.payproof.site](https://app.payproof.site)
+- Landing page: [payproof.site](https://payproof.site) (redirects to [www.payproof.site](https://www.payproof.site))
+- End-to-end NEAR testnet run (3 NEAR): a client created a project, funded escrow, the freelancer submitted work, and the client approved payout in the app.
+  - Release transaction: [H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH](https://testnet.nearblocks.io/txns/H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH)
+    - Escrow → freelancer transfer (3 NEAR, Success): [receipt DQnibmBuT1FtxWXC8AudPriNMT6TU4D32NFBcjeLHgPc](https://testnet.nearblocks.io/receipts/DQnibmBuT1FtxWXC8AudPriNMT6TU4D32NFBcjeLHgPc)
+- Dispute/refund flow: available for eligible projects with active, confirmed escrow. Either participant can raise a dispute; the client can request a refund after the deadline. Requests require a wallet-signed contract call and backend verification, and do not resolve the dispute or move funds.
+
 > **Implementation note:** This README distinguishes implemented behavior from partial integrations and known gaps. In particular, AI currently extracts a checklist from a project brief; it does not assess submitted work or make payment decisions.
 
 ## Contents
@@ -303,6 +312,10 @@ flowchart LR
 
 The browser interacts directly with NEAR for wallet-signed funding, work-submission, and approval calls. The backend separately checks chain transactions before accepting relevant database transitions. Database state, an RPC response, a wallet-reported transaction, and a smart-contract state are related but are not interchangeable trust domains.
 
+### Trust assumptions
+
+Dispute outcomes depend on the account configured as the on-chain `dispute_resolver`; the platform administrator chooses that account, and the escrow contract only prevents the resolver from being the escrow contract itself. Users therefore trust the resolver to adjudicate fairly and safeguard its signing key. The admin contract can change platform configuration and pause or freeze escrow operations, creating a potential censorship or service-interruption risk. It does not itself decide disputes or transfer escrow principal; only the configured resolver can choose the dispute outcome, while the contract enforces the corresponding settlement.
+
 ## Repository structure
 
 ```text
@@ -382,9 +395,9 @@ The repository root has no `.gitmodules` file; `near_hackathon/` is a directory 
 
 ### Required for each project
 
-| Component | Requirement verified from configuration |
+| Component | Recommended requirement and current configuration |
 |---|---|
-| Backend | Java `27` is declared in `payproof/pom.xml`. Use the included Maven Wrapper (`mvnw` / `mvnw.cmd`); a separate Maven install is not required. |
+| Backend | Java `21` (declared in `payproof/pom.xml`; the Docker build/runtime images use Java 21). Use the included Maven Wrapper (`mvnw` / `mvnw.cmd`); a separate Maven install is not required. |
 | Frontends | Node.js `^20.19.0` or `>=22.12.0` and npm are required by the Vite `8.3.5`/`8.3.6` engine metadata in the two frontend lockfiles. Neither package pins an npm version. |
 | Rust contracts | `rust-toolchain.toml` pins Rust `1.93.0`, with `rustfmt`, `clippy`, and the `wasm32-unknown-unknown` target. Cargo is installed with the Rust toolchain. |
 | API data/session storage | PostgreSQL is required by the configured datasource and JDBC session store. |
@@ -393,8 +406,6 @@ The repository root has no `.gitmodules` file; `near_hackathon/` is a directory 
 ### Optional external services
 
 Google OAuth, Resend, Cloudflare R2, DeepSeek, a NEAR wallet, and NEAR RPC are integration dependencies. They are required for their corresponding live features; the backend's checked-in configuration includes several non-optional property placeholders, so configure those values even if you are not exercising every feature. There is no checked-in `.env.example`.
-
-The backend Dockerfile uses a Java 21 build/runtime image while Maven declares Java 27. That mismatch is present in the repository; align the Dockerfile and Maven Java version before relying on the image.
 
 ## Configuration
 
@@ -685,14 +696,13 @@ Review request fields are `status`, optional `feedback` (max 10,000 characters),
 |---|---|---|---|
 | `POST /api/escrows` | Owning `CLIENT` | JSON `{ "jobId": "..." }` | Reserves escrow and returns `CreateEscrowResponse` transaction instructions. Requires an approved agreement, assigned freelancer, distinct connected NEAR wallets, positive NEAR amount, and no existing confirmed escrow. Currently NEAR only. |
 | `POST /api/escrows/{escrowId}/confirm` | Owning `CLIENT` | `ConfirmEscrowRequest` JSON: `{ "jobId": "...", "transactionHash": "..." }` | Records the transaction, checks it via NEAR RPC against the reserved signer, contract, function-call arguments, and on-chain escrow state, then returns `escrowId`, `jobId`, `status`, and `isFunded`. |
+| `GET /api/escrows/job/{jobId}` | Project client or assigned freelancer | None | Returns the current on-chain escrow status and amounts, participant wallets, contract/network, timestamps, and any recorded release transaction or dispute case ID. Returns `404` if no confirmed escrow exists. |
 | `POST /api/escrows/jobs/{jobId}/reconcile-release` | Project client or freelancer | No body | Checks whether the saved escrow is released on-chain and reconciles the latest saved submission as accepted; returns `{ "released": boolean }`. |
-| `POST /api/escrows/jobs/{jobId}/disputes` | Project client or assigned freelancer | JSON `{ "reason": "...", "transactionHash": "..." }` | Records a dispute after verifying a successful `raise_dispute` call by the participant's linked wallet and the on-chain `Disputed` state. The contract itself accepts only `Funded` or `WorkSubmitted` escrows. |
+| `POST /api/escrows/jobs/{jobId}/disputes` | Project client or the escrow's freelancer | JSON `{ "reason": "...", "transactionHash": "..." }` | Verifies a successful `raise_dispute` call by the participant's linked wallet and that the escrow is `Disputed` on-chain; the contract only accepts `Funded` or `WorkSubmitted` as the pre-dispute state. |
 | `POST /api/escrows/jobs/{jobId}/refund-requests` | Owning client | JSON `{ "reason": "...", "transactionHash": "..." }` | Requires the project deadline to have passed, then verifies a successful client `request_refund` call and records the case. This requests resolver review; it does not transfer funds. |
-| `GET /api/escrows/jobs/{jobId}/dispute-case` | Project client or assigned freelancer | None | Returns the recorded case, or `204 No Content` if no case was recorded. |
+| `GET /api/escrows/jobs/{jobId}/dispute-case` | Project client or the escrow's freelancer | None | Returns the recorded case, or `204 No Content` if no case was recorded. |
 
 Verified requests are persisted in the `escrow_dispute_cases` table and also appear in participant activity. There is currently no admin-facing query endpoint/dashboard or resolver endpoint; system-admin investigation is not yet available through the UI.
-
-The backend controller has **no `GET /api/escrows/job/{jobId}` route**. The frontend currently calls that path from `getEscrowForJob`; this API/UI mismatch is documented under [Known limitations](#known-limitations).
 
 `CreateEscrowResponse` contains `escrowId`, `jobId`, `network`, `contractId`, `tokenContractId`, `methodName`, `clientWalletAddress`, `freelancerWalletAddress`, `asset`, `amount`, `platformFee`, `attachedDeposit`, `gas`, `args`, `title`, `description`, and `message`. For NEAR, `amount` and `args.amount` are the project amount payable to the freelancer, `platformFee` is the 3.5% client fee, and `attachedDeposit` is their sum.
 
@@ -919,7 +929,7 @@ macOS/Linux equivalents use `./mvnw test`; the npm and Cargo commands are the sa
 
 ### Backend and PostgreSQL
 
-The backend includes `payproof/Dockerfile`, which exposes port `8080` and runs the packaged Spring Boot JAR. Its Java 21 image conflicts with the Maven Java 27 property and must be reconciled before relying on this image. No Docker Compose file or backend deployment workflow was found.
+The backend includes `payproof/Dockerfile`, which exposes port `8080` and runs the packaged Spring Boot JAR. Its Java 21 image matches the Maven Java 21 declaration. No Docker Compose file or backend deployment workflow was found.
 
 Deploy the API with persistent/reachable PostgreSQL, the required provider configuration, and a stable HTTPS origin. Back up PostgreSQL and establish an explicit schema migration strategy before production use; the current Hibernate `update` setting does not provide reviewed migrations.
 
@@ -961,20 +971,19 @@ This section summarizes source-level controls and operational risks; it is not a
 
 ### Confirmed gaps or mismatches
 
-1. **Escrow lookup endpoint mismatch:** `payproof-frontend/src/services/escrowService.js` calls `GET /api/escrows/job/{jobId}`, but `EscrowController` has no GET endpoint for that route. The feature can fail unless the API gains a matching implementation or the client is changed.
-2. **Escrow asset support differs by layer:** contract code supports NEAR and configured NEP-141 USDT/USDC, but `EscrowCreationService` currently returns `501` unless the job currency is NEAR.
-3. **Platform fee configuration must stay synchronized:** the backend and frontend currently calculate a fixed 3.5% fee, while the admin contract can configure a different fee up to 10%. A different on-chain rate will make funding transactions fail until the application and contract agree.
-4. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
-5. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
-6. **Dispute resolution/admin UI gap:** participant dispute and client refund-request submission are exposed and logged, but the configured resolver's release/refund decision, failed-settlement retry controls, admin review endpoint, and admin dashboard are not exposed through the application.
-7. **Docker Java version mismatch:** Maven declares Java 27; `payproof/Dockerfile` uses Java 21.
-8. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
-9. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
-10. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this change.
-11. **Deployment state is unverified:** checked-in properties/workflows provide configuration paths, but no live database, provider credentials, deployed contract state, or successful release was verified here.
-12. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
-13. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
-14. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or cancellation settlement flow. Participant dispute and client refund-request submission are implemented; resolver and admin tooling are not. Treat the unsupported claims as aspirational, not as shipped functionality.
+1. **Escrow asset support differs by layer:** contract code supports NEAR and configured NEP-141 USDT/USDC, but `EscrowCreationService` currently returns `501` unless the job currency is NEAR.
+2. **Platform fee configuration must stay synchronized:** the backend and frontend currently calculate a fixed 3.5% fee, while the admin contract can configure a different fee up to 10%. A different on-chain rate will make funding transactions fail until the application and contract agree.
+3. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
+4. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
+5. **Dispute resolution/admin UI gap:** participant dispute and client refund-request submission are exposed and logged, but the configured resolver's release/refund decision, failed-settlement retry controls, admin review endpoint, and admin dashboard are not exposed through the application.
+6. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
+7. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
+8. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this change.
+9. **Deployment state is unverified:** checked-in properties/workflows provide configuration paths, but no live database, provider credentials, deployed contract state, or successful release was verified here.
+10. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
+11. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
+12. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or cancellation settlement flow. Participant dispute and client refund-request submission are implemented; resolver and admin tooling are not. Treat the unsupported claims as aspirational, not as shipped functionality.
+13. **Deployed contract differs from checked-in source on `approve_work` deposit check:** the testnet deployment at `payproof-escrowdavid.testnet` accepted a 0-deposit `approve_work` call (tx `H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH`), while `contracts/escrow/src/lib.rs` in this repository includes `assert_one_yocto()`. Rebuild and redeploy from the checked-in source before production use.
 
 ### Features not represented as implemented
 
