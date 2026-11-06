@@ -8,8 +8,9 @@ The codebase contains a React application, a separate React marketing site, a Ja
 
 - App: [app.payproof.site](https://app.payproof.site)
 - Landing page: [payproof.site](https://payproof.site) (redirects to [www.payproof.site](https://www.payproof.site))
+- Reported NEAR testnet run (3 NEAR): a client created a project and funded escrow, the freelancer submitted work, and the client approved payout in the app.
+  - Release transaction (user-provided): [H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH](https://testnet.nearblocks.io/txns/H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH)
 - Dispute/refund flow: available for eligible projects with active, confirmed escrow. Either participant can raise a dispute; the client can request a refund after the deadline. Requests require a wallet-signed contract call and backend verification, and do not resolve the dispute or move funds.
-- NEAR explorer evidence: no verified funding/release transaction hashes are documented in this checkout, so transaction links are not included here.
 
 > **Implementation note:** This README distinguishes implemented behavior from partial integrations and known gaps. In particular, AI currently extracts a checklist from a project brief; it does not assess submitted work or make payment decisions.
 
@@ -404,8 +405,6 @@ The repository root has no `.gitmodules` file; `near_hackathon/` is a directory 
 ### Optional external services
 
 Google OAuth, Resend, Cloudflare R2, DeepSeek, a NEAR wallet, and NEAR RPC are integration dependencies. They are required for their corresponding live features; the backend's checked-in configuration includes several non-optional property placeholders, so configure those values even if you are not exercising every feature. There is no checked-in `.env.example`.
-
-The backend Dockerfile uses Java 21, but the current Maven property in `payproof/pom.xml` is Java 27. Java 21 is the intended target; align the Maven property to Java 21 before relying on the Docker image.
 
 ## Configuration
 
