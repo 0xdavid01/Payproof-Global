@@ -9,6 +9,7 @@ The codebase contains a React application, a separate React marketing site, a Ja
 ## Contents
 
 - [Product overview](#product-overview)
+- [End-to-end user journey](#end-to-end-user-journey)
 - [Core features and implementation status](#core-features-and-implementation-status)
 - [Technology stack](#technology-stack)
 - [Architecture and trust boundaries](#architecture-and-trust-boundaries)
@@ -46,7 +47,162 @@ The implemented workflow is:
 8. The client reviews the submission and its checklist items. Approval requires a successful on-chain release transaction hash, verified by the backend against NEAR. Requested changes allow a subsequent submission version.
 9. The application records activity and sends email notifications for selected submission/review/payout events.
 
-Refunds and disputes are available as methods in the escrow contract, but the backend does not expose corresponding REST endpoints in the current controller. A successful on-chain transaction and backend record update are distinct steps; users must not interpret a frontend status label alone as proof of final chain settlement.
+The escrow contract supports participant disputes and client refund requests. The app now exposes case-submission flows and stores verified requests for later investigation, but it does not provide an admin dashboard or resolver interface. Raising a dispute or requesting a refund moves escrow to `Disputed`; it does not move funds. Only the configured on-chain dispute resolver can decide whether funds are released or refunded. A successful on-chain transaction and backend record update are distinct steps; users must not interpret a frontend status label alone as proof of final chain settlement.
+
+## End-to-end user journey
+
+This section follows a client and freelancer from account enrollment through project completion. It documents the current application flow, including the points where each participant must link a NEAR wallet. Wallet linking is separate from PayProof sign-in: users enroll and authenticate with PayProof first, then connect a NEAR wallet to their PayProof account for project actions that need it.
+
+### 1. Enroll in PayProof and choose a role
+
+The registration screen offers two account roles:
+
+- **Client** — creates projects, invites freelancers, funds escrow, and reviews submitted work.
+- **Freelancer** — receives invitations, participates in agreements, submits work, and receives payment after client approval.
+
+A user can register with their name, email, password, and selected role, or start Google sign-up with a selected role. The registration UI requires a password of at least 12 characters containing a number and a symbol. Registration is not wallet sign-up; the wallet option on the registration and login screens is not currently available.
+
+Email/password sign-in proceeds through a six-digit one-time code sent to the user's email. Google sign-in uses the selected role from the registration screen. On the login screen, Google sign-in currently starts with the `CLIENT` role because that screen has no role selector. After successful authentication, PayProof opens the role-specific workspace.
+
+**Enrollment caveat:** the registration screen attempts to sign the user in immediately after creating the account, but it does not display the OTP-entry step if that sign-in attempt requires a code. A new email/password user may need to go to the login screen and complete OTP verification explicitly. Do not assume registration always leads directly into an authenticated workspace until this UI path is verified or corrected.
+
+### 2. Link a NEAR wallet to the PayProof account
+
+The user signs into PayProof first, then chooses **Connect wallet** in the application header. The app opens the configured NEAR wallet selector; the user selects or signs into a NEAR account. PayProof requests a short-lived challenge and the wallet signs it. The backend verifies the signature and the account/key association on the selected network before linking the wallet to the authenticated PayProof account.
+
+The wallet address shown as connected in the PayProof workspace is the backend-verified linked wallet. Connecting a wallet is not the same as signing into PayProof, and it does not itself create a project or move funds. When a project action requires a wallet signature, the browser wallet session must be the same NEAR account as the wallet linked to that user's PayProof account.
+
+For the current workflow:
+
+- **The client must connect and link a NEAR wallet before creating a project/invitation.** The create-project form checks that a linked wallet exists and that the active NEAR account matches it.
+- **The invited freelancer must connect and link a NEAR wallet before accepting the invitation.** The accept action checks the linked wallet and matching active NEAR account.
+- The client uses its linked wallet to fund the escrow and approve a payout. The freelancer uses its linked wallet for the on-chain work-submission action.
+- Client and freelancer wallets must be distinct for escrow funding. They must be linked to the correct PayProof accounts and configured for the same NEAR network as the application and contract.
+
+The wallet selector currently uses Meteor Wallet. Network and escrow contract configuration come from the frontend environment, with testnet defaults in the checked-in source. A wallet connection on the wrong network/account is not sufficient; the user must switch to the expected account/network and retry.
+
+### 3. Client creates a project and prepares the invitation
+
+Only a `CLIENT` account can create a project. With the wallet linked, the client opens **Projects → New project** and supplies:
+
+1. Project name and description.
+2. Positive budget and currency.
+3. Target delivery date.
+4. Freelancer's email address.
+5. A PDF project requirements document (PRD), which is required by the current form.
+
+The frontend checks the wallet before sending the create request. The backend creates an open project addressed to the participant email. The client then uploads the PRD; the backend stores the PDF, extracts its readable text, and asks DeepSeek to propose an acceptance checklist. The client reviews and can edit the checklist, then approves it. Checklist approval advances the job to pending freelancer acceptance.
+
+An AI-generated checklist is a draft aid, not a decision-maker. The client is responsible for making sure the approved requirements accurately describe the work. The current backend expects an extractable-text PDF and has upload limits; scanned PDFs without readable text may fail.
+
+The project is not ready for the freelancer to accept until the checklist has been approved. The freelancer sees eligible invitations in the **Projects** area of their freelancer workspace. The backend associates the invitation with an email; do not assume an outbound invitation email is delivered unless that notification is separately configured and verified.
+
+### 4. Freelancer reviews and accepts or declines
+
+The freelancer signs into a `FREELANCER` account and opens the invitation to review the project brief, PRD, requirements checklist, amount, and deadline. To accept, the freelancer must first connect and link their NEAR wallet and ensure the active NEAR account matches the linked account. Acceptance records the freelancer on the job and advances it to the agreement stage.
+
+Accepting an invitation is not signing the agreement, funding the project, or permission to begin work. The freelancer can decline instead; declining records the decision, and no agreement or payment is made through that action.
+
+### 5. Freelancer uploads the agreement; both parties approve it
+
+After acceptance, the freelancer uploads the agreement as a PDF. PayProof stores it as a version for the project and presents it for review. The current workflow is:
+
+1. The client reads the uploaded agreement and checks that its terms reflect the project scope and financial terms.
+2. The client can request changes with an explanation. The freelancer can upload a revised agreement version.
+3. The client approves the current version first.
+4. The freelancer reviews and approves that same current version.
+5. The backend marks the agreement approved only when both approvals refer to the current version.
+
+The agreement is a participant-provided PDF. The application does not currently draft a contract or automatically compare its text with the PRD. Before both approvals, the client can update the budget and currency; doing so clears approvals, and if an agreement already exists the freelancer must upload an updated agreement for review.
+
+### 6. Client prepares and funds the escrow
+
+Funding becomes available after the freelancer is assigned and both participants have approved the same agreement version. Both participants need distinct linked NEAR wallets on the configured network. The client opens the project's escrow page and:
+
+1. Requests a funding preparation from the backend. The backend validates the job and wallets, reserves an escrow ID, and returns the NEAR contract call details.
+2. Reviews the prepared amount, fee, network, and contract details in the application.
+3. Approves/signs the transaction in the NEAR wallet.
+4. Waits while PayProof checks the transaction through NEAR and reconciles the result with the backend project record.
+
+The current backend escrow-preparation flow supports **NEAR only**, even though the UI and contract source mention other currencies. The code calculates a 3.5% client platform fee in addition to the agreed project amount; the freelancer's intended payout is the full project amount. The wallet may also show a NEAR network fee.
+
+Funding is not confirmed just because the wallet prompt was approved or a transaction was submitted. Wait for PayProof's verification/status to confirm funding. If a transaction is pending or the status is uncertain, check the existing transaction rather than starting another payment.
+
+### 7. Freelancer submits work against the funded project
+
+The freelancer can submit only after the backend records the agreement as approved, the escrow as confirmed, and the project's approved checklist as available. The freelancer opens the delivery page and provides a file or external delivery URL, with optional notes. The current frontend limits an uploaded delivery file to 25 MB; the backend applies its own upload limits and validation.
+
+The freelancer must have the linked NEAR wallet available and the active wallet account must match it. The frontend first sends an on-chain `submit_work` call with a short evidence string derived from the delivery link, notes, or file name, then sends the file/link/notes to the backend for storage as a versioned submission. The backend captures a snapshot of the approved requirements for that version.
+
+These are separate operations across NEAR and the application API. If the on-chain call succeeds but saving the submission to the backend fails, the page reports that mismatch and supports retrying with the existing transaction; the user should not create a duplicate payment or assume the whole submission is complete until the application record is saved.
+
+### 8. Client reviews the delivery, requests changes, or approves
+
+The client opens the submitted version and reviews its file/link/notes against the captured requirements. The client can save item-by-item checklist review progress. If work needs changes, the client must provide feedback and request changes; the freelancer can then submit another version. Funds remain in escrow while the delivery is awaiting review or changes.
+
+To approve the delivery, the client must:
+
+1. Review and mark every submitted requirement as accepted.
+2. Use the linked client NEAR wallet (with the matching active account) to sign the escrow contract's `approve_work` transaction.
+3. Allow the backend to verify the successful NEAR release transaction and save the accepted review.
+
+The backend rejects final acceptance unless all captured requirements have been accepted and the release transaction is verified. AI does not review the work or make this decision; the client does.
+
+### 9. Finish the job and view the receipt
+
+After successful release verification and acceptance, the backend marks the submission accepted and the job completed. PayProof records the delivery approval and payout activity, and sends selected email notifications when the notification service is configured. The project list provides a receipt route for completed work, showing the project and available agreement, submission, activity, and transaction details.
+
+The receipt page may reconcile the release status with NEAR before displaying the completed project. Application records and blockchain state are separate: if either is temporarily unavailable or out of sync, retry status/reconciliation and verify the transaction rather than relying only on a visual label.
+
+### If work is late or either party needs to raise a dispute
+
+The project page offers **Raise a dispute** to either project participant while the project has confirmed escrow and is not completed. The client also sees **Request a refund** after the project deadline. The client must give a reason of 1–500 characters and sign the matching contract call with the linked NEAR wallet.
+
+The contract enforces the participant role, active escrow status (`Funded` or `WorkSubmitted`), pause/freeze conditions, and one-yocto deposit. The backend additionally restricts refund requests to the client after the recorded deadline, verifies the final NEAR transaction and disputed escrow state, then saves the requester, reason, transaction hash, and timestamp in `escrow_dispute_cases` and records an activity event. The case record can be reviewed from the project page by its participants. A failed API save after the on-chain call can be retried using the saved transaction instead of signing a second dispute call.
+
+`raise_dispute` is available to either client or freelancer. `request_refund` is client-only and represents a refund request, not an actual refund. Neither operation transfers funds. The project is marked `DISPUTED`, and only the account configured as the contract's `dispute_resolver` can call `resolve_dispute` to choose release to the freelancer or refund to the client. The app currently has no resolver/admin dashboard or resolution API; the recorded case is retained for later investigation. The contract can also freeze an escrow through its admin contract, but that control is not exposed as a user-facing dashboard flow.
+
+### Flow summary
+
+```text
+Enroll as CLIENT or FREELANCER
+        |
+Sign in to PayProof
+        |
+Connect NEAR wallet and link it to the PayProof account
+        |
+CLIENT: create project -> upload PRD -> review/approve checklist
+        |
+FREELANCER: review invitation -> connect/link wallet -> accept
+        |
+FREELANCER: upload agreement -> CLIENT approves -> FREELANCER approves same version
+        |
+CLIENT: prepare and sign NEAR escrow funding -> backend verifies funding
+        |
+FREELANCER: submit on-chain evidence and application delivery
+        |
+CLIENT: review each requirement -> request changes OR approve and sign release
+        |
+Backend verifies release -> project marked complete -> receipt/activity
+```
+
+If work is overdue, the client can instead request a refund; either participant can raise a dispute while escrow remains active. Those actions record the case and move the on-chain escrow to `Disputed`; only the configured resolver decides the funds' outcome.
+
+### Role/action checklist
+
+| Action | Client | Freelancer | Wallet requirement |
+|---|---|---|---|
+| Enroll and sign in | Choose `CLIENT` | Choose `FREELANCER` | No wallet needed to enroll or sign in |
+| Link wallet | Link own NEAR wallet | Link own NEAR wallet | Required for project creation/acceptance and chain actions |
+| Create project and invite | Yes | No | Client's linked wallet must be connected before creating |
+| Upload PRD and approve checklist | Yes | No | Client wallet check is performed when creating/sending the project |
+| Accept or decline invitation | No | Yes | Freelancer must have a linked and matching wallet to accept; decline does not require the wallet |
+| Upload agreement | No | Yes | No wallet transaction required for PDF upload |
+| Approve agreement | Yes, first | Yes, after client | Application approval; no chain transaction required |
+| Fund escrow | Yes | No | Client's linked wallet signs the NEAR funding transaction |
+| Submit delivery | No | Yes | Freelancer's linked wallet signs the on-chain work-submission call |
+| Review or request changes | Yes | No | Application review; requesting changes does not require a chain transaction |
+| Approve delivery/release funds | Yes | No | Client's linked wallet signs the NEAR release transaction |
 
 ## Core features and implementation status
 
@@ -62,7 +218,7 @@ Refunds and disputes are available as methods in the escrow contract, but the ba
 | NEAR wallet linking | Implemented for NEAR | A five-minute challenge is signed with NEP-413; the backend verifies the signature and checks that the public key belongs to the account on the selected network. |
 | Escrow preparation/funding | Partial | Backend reservation and transaction verification currently support NEAR only. Contract source also supports configured USDT/USDC FT flows, but those are not enabled by the backend escrow preparation service. |
 | Escrow payout | Implemented across on-chain and API steps | Client submits `approve_work` directly on NEAR; the backend verifies the release transaction and updates the database when the submission review is accepted. |
-| Refund/dispute operations | Contract methods implemented; REST/UI integration incomplete | Escrow contract exposes refund and dispute methods. There are no matching backend controller routes in this checkout. |
+| Dispute/refund requests | Request flow implemented; resolution tooling incomplete | Either participant can raise a dispute; only the overdue project's client can request a refund in the UI. The backend verifies the NEAR transaction and stores an investigation case and activity event. The resolver/admin dashboard and resolution endpoint are not implemented. |
 | Activity and email notifications | Implemented for selected events | Project activities are persisted and listed. Resend emails are emitted for submission, requested changes, and payout notifications, as well as OTP sign-in. |
 | Payment receipt | Partial | A receipt page/route exists in the frontend. A dedicated receipt API endpoint is not defined by the current controllers. |
 | Public marketing site | Implemented separately | `payproof-landing-page/` is a standalone React/Vite site. Its sign-up and login links point to the hosted application; the landing site does not call the backend. |
@@ -530,6 +686,11 @@ Review request fields are `status`, optional `feedback` (max 10,000 characters),
 | `POST /api/escrows` | Owning `CLIENT` | JSON `{ "jobId": "..." }` | Reserves escrow and returns `CreateEscrowResponse` transaction instructions. Requires an approved agreement, assigned freelancer, distinct connected NEAR wallets, positive NEAR amount, and no existing confirmed escrow. Currently NEAR only. |
 | `POST /api/escrows/{escrowId}/confirm` | Owning `CLIENT` | `ConfirmEscrowRequest` JSON: `{ "jobId": "...", "transactionHash": "..." }` | Records the transaction, checks it via NEAR RPC against the reserved signer, contract, function-call arguments, and on-chain escrow state, then returns `escrowId`, `jobId`, `status`, and `isFunded`. |
 | `POST /api/escrows/jobs/{jobId}/reconcile-release` | Project client or freelancer | No body | Checks whether the saved escrow is released on-chain and reconciles the latest saved submission as accepted; returns `{ "released": boolean }`. |
+| `POST /api/escrows/jobs/{jobId}/disputes` | Project client or assigned freelancer | JSON `{ "reason": "...", "transactionHash": "..." }` | Records a dispute after verifying a successful `raise_dispute` call by the participant's linked wallet and the on-chain `Disputed` state. The contract itself accepts only `Funded` or `WorkSubmitted` escrows. |
+| `POST /api/escrows/jobs/{jobId}/refund-requests` | Owning client | JSON `{ "reason": "...", "transactionHash": "..." }` | Requires the project deadline to have passed, then verifies a successful client `request_refund` call and records the case. This requests resolver review; it does not transfer funds. |
+| `GET /api/escrows/jobs/{jobId}/dispute-case` | Project client or assigned freelancer | None | Returns the recorded case, or `204 No Content` if no case was recorded. |
+
+Verified requests are persisted in the `escrow_dispute_cases` table and also appear in participant activity. There is currently no admin-facing query endpoint/dashboard or resolver endpoint; system-admin investigation is not yet available through the UI.
 
 The backend controller has **no `GET /api/escrows/job/{jobId}` route**. The frontend currently calls that path from `getEscrowForJob`; this API/UI mismatch is documented under [Known limitations](#known-limitations).
 
@@ -805,15 +966,15 @@ This section summarizes source-level controls and operational risks; it is not a
 3. **Platform fee configuration must stay synchronized:** the backend and frontend currently calculate a fixed 3.5% fee, while the admin contract can configure a different fee up to 10%. A different on-chain rate will make funding transactions fail until the application and contract agree.
 4. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
 5. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
-6. **Refund/dispute API/UI gap:** contract methods exist, but the backend controller exposes no refund/dispute REST operations.
+6. **Dispute resolution/admin UI gap:** participant dispute and client refund-request submission are exposed and logged, but the configured resolver's release/refund decision, failed-settlement retry controls, admin review endpoint, and admin dashboard are not exposed through the application.
 7. **Docker Java version mismatch:** Maven declares Java 27; `payproof/Dockerfile` uses Java 21.
 8. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
 9. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
-10. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this documentation change.
+10. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this change.
 11. **Deployment state is unverified:** checked-in properties/workflows provide configuration paths, but no live database, provider credentials, deployed contract state, or successful release was verified here.
 12. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
 13. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
-14. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or dispute REST/UI workflow. Treat that copy as aspirational, not as shipped functionality.
+14. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or cancellation settlement flow. Participant dispute and client refund-request submission are implemented; resolver and admin tooling are not. Treat the unsupported claims as aspirational, not as shipped functionality.
 
 ### Features not represented as implemented
 

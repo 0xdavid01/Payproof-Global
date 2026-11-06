@@ -411,6 +411,59 @@ export async function approveWorkOnChain(escrowId, expectedAccountId) {
   );
 }
 
+async function submitEscrowCaseOnChain(methodName, escrowId, reason, expectedAccountId) {
+  if (!escrowId || typeof escrowId !== "string") {
+    throw new Error("This project does not have a valid escrow ID.");
+  }
+  if (typeof reason !== "string" || !reason.trim() || reason.trim().length > 500) {
+    throw new Error("Provide a reason of 1 to 500 characters.");
+  }
+
+  await ensureWalletSessionMatches(expectedAccountId);
+  const outcome = await sendFunctionCall({
+    receiverId: CONTRACT_ID,
+    methodName,
+    args: { escrow_id: escrowId, reason: reason.trim() },
+    gas: "100000000000000",
+    deposit: "1",
+  });
+
+  if (
+    outcome?.status &&
+    typeof outcome.status === "object" &&
+    outcome.status.Failure
+  ) {
+    throw new Error("The dispute transaction failed on the NEAR blockchain.");
+  }
+
+  const transactionHash =
+    outcome?.transaction?.hash ??
+    outcome?.transaction_outcome?.id ??
+    null;
+  if (!transactionHash) {
+    throw new Error(
+      "The wallet did not return a transaction hash. Check your NEAR wallet activity before retrying."
+    );
+  }
+  return transactionHash;
+}
+
+export const raiseDisputeOnChain = (escrowId, reason, expectedAccountId) =>
+  submitEscrowCaseOnChain(
+    "raise_dispute",
+    escrowId,
+    reason,
+    expectedAccountId
+  );
+
+export const requestRefundOnChain = (escrowId, reason, expectedAccountId) =>
+  submitEscrowCaseOnChain(
+    "request_refund",
+    escrowId,
+    reason,
+    expectedAccountId
+  );
+
 function buildFunctionCallAction({
   methodName,
   args,

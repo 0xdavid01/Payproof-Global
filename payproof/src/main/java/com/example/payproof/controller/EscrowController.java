@@ -2,14 +2,18 @@
 package com.example.payproof.controller;
 
 import com.example.payproof.dto.request.ConfirmEscrowRequest;
+import com.example.payproof.dto.request.CreateEscrowCaseRequest;
 import com.example.payproof.dto.request.CreateEscrowRequest;
 import com.example.payproof.dto.response.CreateEscrowResponse;
+import com.example.payproof.dto.response.EscrowDisputeCaseResponse;
+import com.example.payproof.enums.EscrowCaseType;
 import com.example.payproof.model.JobModel;
 import com.example.payproof.model.UserModel;
 import com.example.payproof.repository.JobRepository;
 import com.example.payproof.repository.UserRepository;
 import com.example.payproof.security.CustomUserPrincipal;
 import com.example.payproof.service.EscrowCreationService;
+import com.example.payproof.service.EscrowDisputeCaseService;
 import com.example.payproof.service.NearTransactionVerifier;
 import com.example.payproof.service.SubmissionService;
 import jakarta.validation.Valid;
@@ -31,6 +35,7 @@ public class EscrowController {
     private final EscrowCreationService escrowCreationService;
     private final NearTransactionVerifier nearTransactionVerifier;
     private final SubmissionService submissionService;
+    private final EscrowDisputeCaseService escrowDisputeCaseService;
     private final UserRepository userRepository;
     private final JobRepository jobRepository;
 
@@ -111,6 +116,49 @@ public class EscrowController {
         UserModel user = authenticatedUser(principal);
         boolean released = submissionService.reconcileReleasedEscrow(jobId, user);
         return ResponseEntity.ok(Map.of("released", released));
+    }
+
+    @PostMapping("/jobs/{jobId}/disputes")
+    public ResponseEntity<EscrowDisputeCaseResponse> raiseDispute(
+            @PathVariable String jobId,
+            @Valid @RequestBody CreateEscrowCaseRequest request,
+            @AuthenticationPrincipal CustomUserPrincipal principal
+    ) {
+        UserModel user = authenticatedUser(principal);
+        return ResponseEntity.ok(escrowDisputeCaseService.createCase(
+                jobId,
+                EscrowCaseType.DISPUTE,
+                request,
+                user
+        ));
+    }
+
+    @PostMapping("/jobs/{jobId}/refund-requests")
+    public ResponseEntity<EscrowDisputeCaseResponse> requestRefund(
+            @PathVariable String jobId,
+            @Valid @RequestBody CreateEscrowCaseRequest request,
+            @AuthenticationPrincipal CustomUserPrincipal principal
+    ) {
+        UserModel user = authenticatedUser(principal);
+        return ResponseEntity.ok(escrowDisputeCaseService.createCase(
+                jobId,
+                EscrowCaseType.REFUND_REQUEST,
+                request,
+                user
+        ));
+    }
+
+    @GetMapping("/jobs/{jobId}/dispute-case")
+    public ResponseEntity<EscrowDisputeCaseResponse> getDisputeCase(
+            @PathVariable String jobId,
+            @AuthenticationPrincipal CustomUserPrincipal principal
+    ) {
+        UserModel user = authenticatedUser(principal);
+        EscrowDisputeCaseResponse response =
+                escrowDisputeCaseService.getCase(jobId, user);
+        return response == null
+                ? ResponseEntity.<EscrowDisputeCaseResponse>noContent().build()
+                : ResponseEntity.ok(response);
     }
 
     private UserModel authenticatedUser(CustomUserPrincipal principal) {

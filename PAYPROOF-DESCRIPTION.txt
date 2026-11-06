@@ -1,0 +1,217 @@
+PAYPROOF
+Detailed product description and pitch guide
+
+
+AT A GLANCE
+
+PayProof is a project-agreement and payment workflow for independent client-freelancer work. It brings the project brief, acceptance requirements, mutual agreement, client-funded NEAR escrow, work submission, review, and payment record into one shared process.
+
+The problem it addresses is familiar to both sides of freelance work:
+
+- Clients can be unsure exactly what they will receive, when it will be delivered, or whether the work will meet their expectations.
+- Freelancers can be unsure whether the client will pay, whether the scope will change, or whether payment will be delayed after delivery.
+- Important details often live in separate documents, email threads, chat messages, and payment tools.
+
+PayProof is designed to make expectations explicit before work begins, place the client's project funds in escrow before delivery, and connect review and payment to the same project record.
+
+PayProof is not a freelancer marketplace. Clients bring or invite the freelancer they want to work with. PayProof provides the workflow for structuring, documenting, funding, and completing that collaboration.
+
+
+THE PITCH
+
+Long pitch:
+
+Independent projects often start with a vague brief, scattered messages, and a promise to pay later. That leaves clients unsure what they are buying and freelancers unsure whether they will be paid.
+
+PayProof gives both sides one shared process. The client sets up the project and requirements, the freelancer reviews the invitation, and both approve the same agreement. The client then funds the project in NEAR escrow before work begins. The freelancer submits the delivery, the client reviews it against the agreed requirements, and approval triggers the on-chain payout.
+
+The result is a clearer project record and a more transparent path from agreement to payment, without requiring the freelancer to deposit the client's money or either side to manage the workflow through scattered messages.
+
+Short pitch:
+
+PayProof brings project scope, mutual agreement, funded NEAR escrow, and delivery review into one workflow, so clients and freelancers can start with clearer expectations and a visible path to payment.
+
+One-liner:
+
+PayProof helps independent workers agree on the work, secure the funds, and document delivery, all in one project workflow.
+
+Tagline option:
+
+Clear terms. Funds in place. Work with confidence.
+
+
+WHO IT IS FOR
+
+CLIENTS
+
+Clients use PayProof to:
+- Create a project with a scope, budget, currency, and delivery date.
+- Invite a freelancer by email.
+- Share a requirements document and approve an acceptance checklist.
+- Review the agreement and request changes before approving it.
+- Fund the project escrow after both parties approve the agreement.
+- Review submitted work against the agreed checklist and approve it or request changes.
+- Keep project activity and payment information associated with the project.
+
+FREELANCERS
+
+Freelancers use PayProof to:
+- Review the project invitation, brief, and requirements before accepting.
+- Participate in the agreement approval process.
+- See that escrow funding has been confirmed before starting delivery.
+- Submit files or delivery links with explanatory notes.
+- Respond to requested changes with a new submission version.
+- Track the project's review and payment status.
+
+PayProof's intended benefit to the freelancer is that they do not have to fund the client's escrow. The client deposits the project amount and the platform fee.
+
+
+HOW IT WORKS
+
+1. CREATE A PROJECT
+
+The client creates a project with a title, description, budget, currency, delivery deadline, and the invited freelancer's email. The client can upload a PDF project requirements document (PRD).
+
+2. TURN THE BRIEF INTO A CHECKLIST
+
+The backend extracts text from the uploaded PDF and uses DeepSeek to propose a checklist of actionable requirements. The client can review and edit the proposed items before approving the checklist. The checklist is intended to make acceptance criteria easier to discuss and review.
+
+The checklist is AI-assisted, not authoritative: the client must review and approve it. The AI does not inspect the eventual delivery, decide whether requirements have been met, resolve disputes, or authorize payment.
+
+3. FREELANCER REVIEWS THE INVITATION
+
+The invited freelancer can review the brief and requirements and either accept or decline. Acceptance advances the project to the agreement stage; it is not itself a signed contract and does not mean work should begin.
+
+4. AGREE ON THE CONTRACT
+
+The freelancer can upload a PDF agreement. Both client and freelancer approve the same current agreement version. The client can request changes. If payment terms change before mutual approval, earlier approvals are cleared so the parties can review the updated terms.
+
+The application manages uploaded agreement versions and approvals. It does not currently generate legal agreements or automatically compare the agreement text with the PRD.
+
+5. FUND THE PROJECT
+
+After the agreement is approved by both parties, the client connects and uses a NEAR wallet to fund the escrow. The backend prepares the transaction, and the client reviews and signs it in the wallet. The backend checks the transaction against NEAR before marking the project's funding as confirmed.
+
+The freelancer can see the funding status and does not deposit the client's project funds. The code currently calculates a 3.5% platform fee on the client-funded project amount. The exact fee and network costs should be confirmed for the environment being used.
+
+6. SUBMIT AND REVIEW THE WORK
+
+Once escrow is confirmed, the freelancer submits a file or external delivery link, with optional notes. Submissions are versioned, and the approved project requirements are captured with each version. The client can review requirements individually, request changes, or approve the delivery.
+
+7. RELEASE PAYMENT
+
+Client approval initiates an escrow contract action on NEAR. The backend verifies the relevant transaction before recording the review and payout status. This ties the application record to an on-chain transaction, while keeping the client's review decision explicit.
+
+The precise statement is that approval triggers a payout transaction and the backend checks it. Do not describe this as an unconditional guarantee of payment or as an AI decision.
+
+
+WHY IT MAY MATTER
+
+For clients:
+- A more structured brief and visible acceptance criteria.
+- A documented agreement approved by both sides.
+- Project funds held in escrow before work starts.
+- A review flow connected to the agreed requirements.
+
+For freelancers:
+- The opportunity to review the brief before accepting.
+- A clearer scope and delivery target.
+- Visibility that project funds are in escrow before starting work.
+- A documented way to submit delivery and address requested changes.
+
+For both sides:
+- Less reliance on scattered conversations to reconstruct what was agreed.
+- A project record that connects scope, contract, delivery versions, review, and payment activity.
+- A visible transaction trail for supported NEAR escrow actions.
+
+The product value is the connected workflow. AI checklist generation and blockchain escrow support that workflow; neither is the whole product by itself.
+
+
+BUSINESS MODEL
+
+The product and backend code describe a 3.5% platform fee paid by the client when funding escrow. The design intent is that the freelancer receives the full agreed project amount and does not pay a freelancer-side payout fee. There is no monthly subscription represented in the landing page's pricing copy.
+
+Example from the marketing site:
+- Project amount: 1,200 NEAR
+- PayProof fee at 3.5%: 42 NEAR
+- Client funds: 1,242 NEAR, plus any NEAR network fee
+- Freelancer's project payment: 1,200 NEAR
+
+This is the repository's stated pricing model. Confirm the live deployed contract and configuration before quoting a fee to customers, since the contract supports configurable fee settings and values must stay synchronized across the application and contract.
+
+
+WHAT IS IMPLEMENTED IN THIS REPOSITORY
+
+- Separate client and freelancer account roles.
+- Email/password registration and email one-time-code sign-in.
+- Google OAuth sign-in integration, subject to provider configuration.
+- NEAR wallet linking to an existing PayProof account through a signed challenge.
+- Project creation, invitations, acceptance/decline, details, and checklist progress.
+- PDF PRD upload, text extraction, and DeepSeek-generated checklist proposals.
+- Agreement PDF uploads, version tracking, mutual approval, and change requests.
+- Work submissions with file and/or external URL, notes, versions, and client reviews.
+- NEAR escrow preparation and backend transaction verification for NEAR funding.
+- On-chain work-submission and approval actions.
+- Either participant can raise an on-chain dispute; after the deadline, the client can request a refund. Verified case details are stored for later investigation.
+- Project activity tracking and selected email notifications.
+- A standalone public marketing site and a separate application frontend.
+
+
+IMPORTANT LIMITATIONS FOR AN HONEST PITCH
+
+- AI currently proposes a checklist from the uploaded PRD. It does not verify submitted work, assign confidence scores, decide a dispute, draft the contract, or approve/release payments.
+- Agreement support is based on uploaded PDF agreements and participant approvals. Automated contract generation and PRD-to-contract gap analysis are not implemented.
+- Escrow funding through the backend currently supports NEAR only. Although the contract source includes USDT and USDC-related functionality, those assets are not enabled by the current backend escrow-preparation flow.
+- Dispute and refund requests are now exposed in the project UI. Either party can raise a dispute; only the client can request a refund, and the UI/backend require the project deadline to have passed for that request. The backend verifies the NEAR transaction and stores case details for investigation. This does not resolve the dispute or move funds.
+- There is no system-admin dashboard or resolver API in this repository. Only the configured on-chain dispute resolver can decide whether disputed funds are released to the freelancer or refunded to the client. A durable case record is available for future admin tooling, but an admin review workflow is not yet available through the app.
+- The frontend and backend have at least one documented escrow lookup route mismatch. Funding and payout integrations should be tested end to end before relying on them in a live customer engagement.
+- The default development configuration uses NEAR testnet. The repository alone does not establish that a production mainnet service is deployed, configured, or operating successfully.
+- Deployment status, production readiness, financial performance, customer adoption, legal compliance, and transaction success rates have not been verified by this description.
+
+Avoid claims such as "AI verifies the work," "PayProof guarantees payment," "disputes are automatically resolved," or "live and production-proven on mainnet" unless those statements are independently verified and the product has since been updated to support them.
+
+
+HOW TO TALK ABOUT THE BLOCKCHAIN
+
+For a general audience, lead with the work and payment problem rather than crypto:
+
+"PayProof helps both sides agree on the work, put the client's funds in escrow before delivery, and follow a clear review-to-payment process."
+
+Then explain NEAR as the mechanism that makes supported escrow funding and release transactions verifiable on-chain. The product experience is the client-freelancer workflow; NEAR is part of how its payment trail is implemented.
+
+
+SUGGESTED AUDIENCE-SPECIFIC VERSIONS
+
+To a freelancer:
+
+"Before you start, see the brief, agree on what counts as done, and check that the client's project funds have been placed in escrow. Submit your delivery in the project workspace and track the client's review and payout status."
+
+To a client:
+
+"Invite the freelancer you want to work with, define the deliverables, approve the agreement together, and fund escrow before the work begins. When the delivery arrives, review it against the agreed requirements before approving the payout."
+
+To a potential partner:
+
+"PayProof is building a structured workflow for independent work: scope and acceptance criteria, mutual agreement, client-funded escrow, evidence-backed delivery review, and a traceable payment record. The current implementation combines a web application and API with NEAR-based escrow."
+
+To a non-technical audience:
+
+"Think of PayProof as a shared project workspace that helps a client and freelancer get clear on the work, set the payment aside before work starts, and document delivery and approval in the same place."
+
+
+PRODUCT AND TECHNICAL CONTEXT
+
+The repository contains four separate projects:
+- payproof-landing-page: standalone public marketing website.
+- payproof-frontend: client/freelancer web application built with React and Vite.
+- payproof: Java Spring Boot API with PostgreSQL-backed records and sessions.
+- near_hackathon: Rust NEAR smart contracts, including escrow and administrative contracts.
+
+The backend also integrates with Cloudflare R2 for file storage, DeepSeek for checklist generation, Resend for selected email delivery, Google OAuth, and NEAR RPC for transaction verification. These services require correct environment and provider configuration.
+
+The application and backend maintain project and review records; the NEAR blockchain records the supported escrow state and transactions. These are separate systems, and their statuses need to be reconciled. A transaction shown by a wallet or a status label in the UI is not, by itself, proof that every application and chain record is in sync.
+
+
+SOURCE BASIS
+
+This description is based on the repository-level README and source in payproof-frontend, payproof, payproof-landing-page, and near_hackathon. It describes the code and claims present in the checkout, not a live-service audit or independent verification of a deployed environment.

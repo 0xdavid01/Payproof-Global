@@ -33,6 +33,8 @@ const ACTION_ICONS = {
   DELIVERY_REQUIREMENTS_REVIEWED: CheckCircle2,
   DELIVERY_CHANGES_REQUESTED: FileCheck,
   DELIVERY_APPROVED: CheckCircle2,
+  DISPUTE_RAISED: ShieldCheck,
+  REFUND_REQUESTED: Wallet,
 };
 
 function formatTimestamp(value) {

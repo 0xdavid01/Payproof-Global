@@ -2,6 +2,8 @@
 package com.example.payproof.service;
 
 import com.example.payproof.model.JobModel;
+import com.example.payproof.model.UserModel;
+import com.example.payproof.enums.UserRole;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +28,8 @@ public class NearTransactionVerifier {
     private static final String ESCROW_METHOD = "create_and_fund_with_near";
     private static final String ESCROW_QUERY_METHOD = "get_escrow";
     private static final String RELEASE_METHOD = "approve_work";
+    private static final String DISPUTE_METHOD = "raise_dispute";
+    private static final String REFUND_REQUEST_METHOD = "request_refund";
     private static final BigInteger PLATFORM_FEE_BPS = BigInteger.valueOf(350);
     private static final BigInteger BASIS_POINTS = BigInteger.valueOf(10_000);
 
@@ -169,6 +173,164 @@ public class NearTransactionVerifier {
         if (job == null || escrowId == null || escrowId.isBlank()) {
             throw invalid("The job does not have a confirmed escrow.");
         }
+        verifyReleaseTransaction(job, transactionHash, escrowId);
+    }
+
+        public void verifyDisputeRequest(
+                JobModel job,
+                UserModel requester,
+                String transactionHash,
+                String reason,
+                boolean refundRequest
+        ) {
+            String escrowId = job != null ? job.getEscrowId() : null;
+            if (job == null || escrowId == null || escrowId.isBlank()) {
+                throw invalid("The job does not have a confirmed escrow.");
+            }
+            if (transactionHash == null || transactionHash.isBlank()) {
+                throw invalid("The dispute transaction hash is required.");
+            }
+
+            String expectedSigner = requester.getRole() == UserRole.CLIENT
+                    ? job.getEscrowCreationClientWallet()
+                    : job.getEscrowCreationFreelancerWallet();
+            if (expectedSigner == null || expectedSigner.isBlank()) {
+                throw invalid("The requester's wallet is missing from the escrow reservation.");
+            }
+
+            JsonNode txResult = rpcCall(
+                    "EXPERIMENTAL_tx_status",
+                    Map.of(
+                            "tx_hash", transactionHash,
+                            "sender_account_id", expectedSigner,
+                            "wait_until", "FINAL"
+                    )
+            );
+            JsonNode transaction = txResult.path("transaction");
+            if (transaction.isMissingNode() || transaction.isNull()) {
+                throw unavailable("NEAR has not returned the dispute transaction yet.");
+            }
+            if (!escrowContractId.equals(transaction.path("receiver_id").asText())) {
+                throw invalid("The dispute transaction was sent to the wrong contract.");
+            }
+            if (!expectedSigner.equals(transaction.path("signer_id").asText())) {
+                throw invalid("The dispute transaction signer does not match the linked project wallet.");
+            }
+
+            JsonNode status = txResult.path("status");
+            if (status.has("Failure")) {
+                throw invalid("The NEAR dispute transaction failed.");
+            }
+            if (!status.has("SuccessValue") && !status.has("SuccessReceiptId")) {
+                throw unavailable("The dispute transaction has not reached a successful outcome.");
+            }
+
+            verifyDisputeFunctionCall(
+                    transaction,
+                    escrowId,
+                    reason,
+                    refundRequest
+            );
+            verifyDisputedEscrow(escrowId, job, reason);
+        }
+
+        private void verifyDisputeFunctionCall(
+                JsonNode transaction,
+                String escrowId,
+                String reason,
+                boolean refundRequest
+        ) {
+            String expectedMethod = refundRequest
+                    ? REFUND_REQUEST_METHOD
+                    : DISPUTE_METHOD;
+            JsonNode actions = transaction.path("actions");
+            if (!actions.isArray()) {
+                throw invalid("The dispute transaction contains no readable actions.");
+            }
+
+            for (JsonNode action : actions) {
+                JsonNode functionCall = action.path("FunctionCall");
+                if (functionCall.isMissingNode()
+                        || functionCall.isNull()
+                        || !expectedMethod.equals(functionCall.path("method_name").asText())) {
+                    continue;
+                }
+
+                JsonNode args;
+                try {
+                    args = objectMapper.readTree(
+                            Base64.getDecoder().decode(functionCall.path("args").asText())
+                    );
+                } catch (Exception exception) {
+                    throw invalid("The dispute transaction arguments are invalid.");
+                }
+
+                if (!escrowId.equals(args.path("escrow_id").asText())
+                        || !reason.equals(args.path("reason").asText())) {
+                    throw invalid("The dispute transaction does not match this request.");
+                }
+                if (!"1".equals(functionCall.path("deposit").asText())) {
+                    throw invalid("The dispute transaction must attach exactly one yoctoNEAR.");
+                }
+                return;
+            }
+
+            throw invalid("The transaction did not call the expected dispute method.");
+        }
+
+        private void verifyDisputedEscrow(
+                String escrowId,
+                JobModel job,
+                String reason
+        ) {
+            String args = objectMapper.writeValueAsString(Map.of("escrow_id", escrowId));
+            String encodedArgs = Base64.getEncoder().encodeToString(
+                    args.getBytes(StandardCharsets.UTF_8)
+            );
+            JsonNode result = rpcCall(
+                    "query",
+                    Map.of(
+                            "request_type", "call_function",
+                            "finality", "final",
+                            "account_id", escrowContractId,
+                            "method_name", ESCROW_QUERY_METHOD,
+                            "args_base64", encodedArgs
+                    )
+            );
+
+            JsonNode bytes = result.path("result");
+            if (!bytes.isArray()) {
+                throw unavailable("The escrow contract returned an invalid response.");
+            }
+            byte[] data = new byte[bytes.size()];
+            for (int i = 0; i < bytes.size(); i++) {
+                data[i] = (byte) bytes.get(i).asInt();
+            }
+
+            JsonNode escrow;
+            try {
+                escrow = objectMapper.readTree(new String(data, StandardCharsets.UTF_8));
+            } catch (Exception exception) {
+                throw unavailable("The escrow contract response could not be parsed.");
+            }
+
+            if (!escrowId.equals(escrow.path("escrow_id").asText())
+                    || !"Disputed".equalsIgnoreCase(escrow.path("status").asText())
+                    || !reason.equals(escrow.path("dispute_reason").asText())) {
+                throw unavailable("The on-chain dispute has not been confirmed.");
+            }
+            if (!job.getEscrowCreationClientWallet().equals(escrow.path("client").asText())
+                    || !job.getEscrowCreationFreelancerWallet().equals(
+                            escrow.path("freelancer").asText())) {
+                throw invalid("The on-chain dispute participants do not match this project.");
+            }
+        }
+
+    private void verifyReleaseTransaction(
+            JobModel job,
+            String transactionHash,
+            String escrowId
+    ) {
         if (transactionHash == null || transactionHash.isBlank()) {
             throw invalid("The release transaction hash is required.");
         }
