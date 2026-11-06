@@ -384,7 +384,7 @@ The repository root has no `.gitmodules` file; `near_hackathon/` is a directory 
 
 | Component | Requirement verified from configuration |
 |---|---|
-| Backend | Java `27` is declared in `payproof/pom.xml`. Use the included Maven Wrapper (`mvnw` / `mvnw.cmd`); a separate Maven install is not required. |
+| Backend | Java `21` is declared in `payproof/pom.xml`. Use the included Maven Wrapper (`mvnw` / `mvnw.cmd`); a separate Maven install is not required. |
 | Frontends | Node.js `^20.19.0` or `>=22.12.0` and npm are required by the Vite `8.3.5`/`8.3.6` engine metadata in the two frontend lockfiles. Neither package pins an npm version. |
 | Rust contracts | `rust-toolchain.toml` pins Rust `1.93.0`, with `rustfmt`, `clippy`, and the `wasm32-unknown-unknown` target. Cargo is installed with the Rust toolchain. |
 | API data/session storage | PostgreSQL is required by the configured datasource and JDBC session store. |
@@ -394,7 +394,7 @@ The repository root has no `.gitmodules` file; `near_hackathon/` is a directory 
 
 Google OAuth, Resend, Cloudflare R2, DeepSeek, a NEAR wallet, and NEAR RPC are integration dependencies. They are required for their corresponding live features; the backend's checked-in configuration includes several non-optional property placeholders, so configure those values even if you are not exercising every feature. There is no checked-in `.env.example`.
 
-The backend Dockerfile uses a Java 21 build/runtime image while Maven declares Java 27. That mismatch is present in the repository; align the Dockerfile and Maven Java version before relying on the image.
+The backend Dockerfile uses a Java 21 build/runtime image while Maven declares Java 21. That mismatch is present in the repository; align the Dockerfile and Maven Java version before relying on the image.
 
 ## Configuration
 
@@ -919,7 +919,7 @@ macOS/Linux equivalents use `./mvnw test`; the npm and Cargo commands are the sa
 
 ### Backend and PostgreSQL
 
-The backend includes `payproof/Dockerfile`, which exposes port `8080` and runs the packaged Spring Boot JAR. Its Java 21 image conflicts with the Maven Java 27 property and must be reconciled before relying on this image. No Docker Compose file or backend deployment workflow was found.
+The backend includes `payproof/Dockerfile`, which exposes port `8080` and runs the packaged Spring Boot JAR. Its Java 21 image conflicts with the Maven Java 21 property and must be reconciled before relying on this image. No Docker Compose file or backend deployment workflow was found.
 
 Deploy the API with persistent/reachable PostgreSQL, the required provider configuration, and a stable HTTPS origin. Back up PostgreSQL and establish an explicit schema migration strategy before production use; the current Hibernate `update` setting does not provide reviewed migrations.
 
@@ -967,7 +967,7 @@ This section summarizes source-level controls and operational risks; it is not a
 4. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
 5. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
 6. **Dispute resolution/admin UI gap:** participant dispute and client refund-request submission are exposed and logged, but the configured resolver's release/refund decision, failed-settlement retry controls, admin review endpoint, and admin dashboard are not exposed through the application.
-7. **Docker Java version mismatch:** Maven declares Java 27; `payproof/Dockerfile` uses Java 21.
+7. **Docker Java version mismatch:** Maven declares Java 21; `payproof/Dockerfile` uses Java 21.
 8. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
 9. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
 10. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this change.
