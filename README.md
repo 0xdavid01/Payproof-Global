@@ -10,6 +10,7 @@ The codebase contains a React application, a separate React marketing site, a Ja
 - Landing page: [payproof.site](https://payproof.site) (redirects to [www.payproof.site](https://www.payproof.site))
 - End-to-end NEAR testnet run (3 NEAR): a client created a project, funded escrow, the freelancer submitted work, and the client approved payout in the app.
   - Release transaction: [H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH](https://testnet.nearblocks.io/txns/H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH)
+    - Escrow → freelancer transfer (3 NEAR, Success): [receipt DQnibmBuT1FtxWXC8AudPriNMT6TU4D32NFBcjeLHgPc](https://testnet.nearblocks.io/receipts/DQnibmBuT1FtxWXC8AudPriNMT6TU4D32NFBcjeLHgPc)
 - Dispute/refund flow: available for eligible projects with active, confirmed escrow. Either participant can raise a dispute; the client can request a refund after the deadline. Requests require a wallet-signed contract call and backend verification, and do not resolve the dispute or move funds.
 
 > **Implementation note:** This README distinguishes implemented behavior from partial integrations and known gaps. In particular, AI currently extracts a checklist from a project brief; it does not assess submitted work or make payment decisions.
@@ -984,6 +985,7 @@ This section summarizes source-level controls and operational risks; it is not a
 11. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
 12. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
 13. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or cancellation settlement flow. Participant dispute and client refund-request submission are implemented; resolver and admin tooling are not. Treat the unsupported claims as aspirational, not as shipped functionality.
+14. **Deployed contract differs from checked-in source on `approve_work` deposit check:** the testnet deployment at `payproof-escrowdavid.testnet` accepted a 0-deposit `approve_work` call (tx `H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH`), while `contracts/escrow/src/lib.rs` in this repository includes `assert_one_yocto()`. Rebuild and redeploy from the checked-in source before production use.
 
 ### Features not represented as implemented
 
