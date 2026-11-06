@@ -704,8 +704,6 @@ Review request fields are `status`, optional `feedback` (max 10,000 characters),
 
 Verified requests are persisted in the `escrow_dispute_cases` table and also appear in participant activity. There is currently no admin-facing query endpoint/dashboard or resolver endpoint; system-admin investigation is not yet available through the UI.
 
-The backend controller has **no `GET /api/escrows/job/{jobId}` route**. The frontend currently calls that path from `getEscrowForJob`; this API/UI mismatch is documented under [Known limitations](#known-limitations).
-
 `CreateEscrowResponse` contains `escrowId`, `jobId`, `network`, `contractId`, `tokenContractId`, `methodName`, `clientWalletAddress`, `freelancerWalletAddress`, `asset`, `amount`, `platformFee`, `attachedDeposit`, `gas`, `args`, `title`, `description`, and `message`. For NEAR, `amount` and `args.amount` are the project amount payable to the freelancer, `platformFee` is the 3.5% client fee, and `attachedDeposit` is their sum.
 
 The frontend validates the preparation and derives the NEAR fee/deposit in yoctoNEAR before signing, so it does not rely on a stale or inconsistent saved deposit. The backend independently verifies the transaction value and fee against the job amount. Both currently use a fixed 350 basis points; keep that value synchronized with the deployed escrow contract configuration.
@@ -973,20 +971,19 @@ This section summarizes source-level controls and operational risks; it is not a
 
 ### Confirmed gaps or mismatches
 
-1. **Escrow lookup endpoint mismatch:** `payproof-frontend/src/services/escrowService.js` calls `GET /api/escrows/job/{jobId}`, but `EscrowController` has no GET endpoint for that route. The feature can fail unless the API gains a matching implementation or the client is changed.
-2. **Escrow asset support differs by layer:** contract code supports NEAR and configured NEP-141 USDT/USDC, but `EscrowCreationService` currently returns `501` unless the job currency is NEAR.
-3. **Platform fee configuration must stay synchronized:** the backend and frontend currently calculate a fixed 3.5% fee, while the admin contract can configure a different fee up to 10%. A different on-chain rate will make funding transactions fail until the application and contract agree.
-4. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
-5. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
-6. **Dispute resolution/admin UI gap:** participant dispute and client refund-request submission are exposed and logged, but the configured resolver's release/refund decision, failed-settlement retry controls, admin review endpoint, and admin dashboard are not exposed through the application.
-7. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
-8. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
-9. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this change.
-10. **Deployment state is unverified:** checked-in properties/workflows provide configuration paths, but no live database, provider credentials, deployed contract state, or successful release was verified here.
-11. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
-12. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
-13. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or cancellation settlement flow. Participant dispute and client refund-request submission are implemented; resolver and admin tooling are not. Treat the unsupported claims as aspirational, not as shipped functionality.
-14. **Deployed contract differs from checked-in source on `approve_work` deposit check:** the testnet deployment at `payproof-escrowdavid.testnet` accepted a 0-deposit `approve_work` call (tx `H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH`), while `contracts/escrow/src/lib.rs` in this repository includes `assert_one_yocto()`. Rebuild and redeploy from the checked-in source before production use.
+1. **Escrow asset support differs by layer:** contract code supports NEAR and configured NEP-141 USDT/USDC, but `EscrowCreationService` currently returns `501` unless the job currency is NEAR.
+2. **Platform fee configuration must stay synchronized:** the backend and frontend currently calculate a fixed 3.5% fee, while the admin contract can configure a different fee up to 10%. A different on-chain rate will make funding transactions fail until the application and contract agree.
+3. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
+4. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
+5. **Dispute resolution/admin UI gap:** participant dispute and client refund-request submission are exposed and logged, but the configured resolver's release/refund decision, failed-settlement retry controls, admin review endpoint, and admin dashboard are not exposed through the application.
+6. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
+7. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
+8. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this change.
+9. **Deployment state is unverified:** checked-in properties/workflows provide configuration paths, but no live database, provider credentials, deployed contract state, or successful release was verified here.
+10. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
+11. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
+12. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or cancellation settlement flow. Participant dispute and client refund-request submission are implemented; resolver and admin tooling are not. Treat the unsupported claims as aspirational, not as shipped functionality.
+13. **Deployed contract differs from checked-in source on `approve_work` deposit check:** the testnet deployment at `payproof-escrowdavid.testnet` accepted a 0-deposit `approve_work` call (tx `H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH`), while `contracts/escrow/src/lib.rs` in this repository includes `assert_one_yocto()`. Rebuild and redeploy from the checked-in source before production use.
 
 ### Features not represented as implemented
 
