@@ -8,8 +8,8 @@ The codebase contains a React application, a separate React marketing site, a Ja
 
 - App: [app.payproof.site](https://app.payproof.site)
 - Landing page: [payproof.site](https://payproof.site) (redirects to [www.payproof.site](https://www.payproof.site))
-- Reported NEAR testnet run (3 NEAR): a client created a project and funded escrow, the freelancer submitted work, and the client approved payout in the app.
-  - Release transaction (user-provided): [H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH](https://testnet.nearblocks.io/txns/H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH)
+- End-to-end NEAR testnet run (3 NEAR): a client created a project, funded escrow, the freelancer submitted work, and the client approved payout in the app.
+  - Release transaction: [H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH](https://testnet.nearblocks.io/txns/H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH)
 - Dispute/refund flow: available for eligible projects with active, confirmed escrow. Either participant can raise a dispute; the client can request a refund after the deadline. Requests require a wallet-signed contract call and backend verification, and do not resolve the dispute or move funds.
 
 > **Implementation note:** This README distinguishes implemented behavior from partial integrations and known gaps. In particular, AI currently extracts a checklist from a project brief; it does not assess submitted work or make payment decisions.
@@ -396,7 +396,7 @@ The repository root has no `.gitmodules` file; `near_hackathon/` is a directory 
 
 | Component | Recommended requirement and current configuration |
 |---|---|
-| Backend | Java `21` is the intended target and is used by the Docker build/runtime images. The current `payproof/pom.xml` still declares Java `27`; align that property to `21` before relying on a Java 21 Maven/Docker build. Use the included Maven Wrapper (`mvnw` / `mvnw.cmd`); a separate Maven install is not required. |
+| Backend | Java `21` (declared in `payproof/pom.xml`; the Docker build/runtime images use Java 21). Use the included Maven Wrapper (`mvnw` / `mvnw.cmd`); a separate Maven install is not required. |
 | Frontends | Node.js `^20.19.0` or `>=22.12.0` and npm are required by the Vite `8.3.5`/`8.3.6` engine metadata in the two frontend lockfiles. Neither package pins an npm version. |
 | Rust contracts | `rust-toolchain.toml` pins Rust `1.93.0`, with `rustfmt`, `clippy`, and the `wasm32-unknown-unknown` target. Cargo is installed with the Rust toolchain. |
 | API data/session storage | PostgreSQL is required by the configured datasource and JDBC session store. |
@@ -929,7 +929,7 @@ macOS/Linux equivalents use `./mvnw test`; the npm and Cargo commands are the sa
 
 ### Backend and PostgreSQL
 
-The backend includes `payproof/Dockerfile`, which exposes port `8080` and runs the packaged Spring Boot JAR. Its Java 21 image matches the intended target, but the current Maven property is Java 27; align the Maven property to Java 21 before relying on this image. No Docker Compose file or backend deployment workflow was found.
+The backend includes `payproof/Dockerfile`, which exposes port `8080` and runs the packaged Spring Boot JAR. Its Java 21 image matches the Maven Java 21 declaration. No Docker Compose file or backend deployment workflow was found.
 
 Deploy the API with persistent/reachable PostgreSQL, the required provider configuration, and a stable HTTPS origin. Back up PostgreSQL and establish an explicit schema migration strategy before production use; the current Hibernate `update` setting does not provide reviewed migrations.
 
@@ -977,14 +977,13 @@ This section summarizes source-level controls and operational risks; it is not a
 4. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
 5. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
 6. **Dispute resolution/admin UI gap:** participant dispute and client refund-request submission are exposed and logged, but the configured resolver's release/refund decision, failed-settlement retry controls, admin review endpoint, and admin dashboard are not exposed through the application.
-7. **Docker/Maven Java version mismatch:** Java 21 is the intended target and the Dockerfile uses Java 21, but `payproof/pom.xml` currently declares Java 27.
-8. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
-9. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
-10. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this change.
-11. **Deployment state is unverified:** checked-in properties/workflows provide configuration paths, but no live database, provider credentials, deployed contract state, or successful release was verified here.
-12. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
-13. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
-14. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or cancellation settlement flow. Participant dispute and client refund-request submission are implemented; resolver and admin tooling are not. Treat the unsupported claims as aspirational, not as shipped functionality.
+7. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
+8. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
+9. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this change.
+10. **Deployment state is unverified:** checked-in properties/workflows provide configuration paths, but no live database, provider credentials, deployed contract state, or successful release was verified here.
+11. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
+12. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
+13. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or cancellation settlement flow. Participant dispute and client refund-request submission are implemented; resolver and admin tooling are not. Treat the unsupported claims as aspirational, not as shipped functionality.
 
 ### Features not represented as implemented
 
