@@ -1,5 +1,9 @@
 # PayProof Platform
 
+> **PayProof is a non-custodial escrow platform for freelancers and clients on NEAR. The client and freelancer each sign their own transactions; the server never holds keys. Escrow is enforced by Rust smart contracts on NEAR testnet, with an arbiter dispute path.**
+>
+> **Live app: [app.payproof.site](https://app.payproof.site) · End-to-end testnet transaction: [H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH](https://testnet.nearblocks.io/txns/H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH)**
+
 PayProof is a project and payment workflow for clients and freelancers. It brings project briefs, requirements, agreements, work submissions, and escrow funding together in a web application backed by a Spring Boot API and NEAR smart contracts.
 
 The codebase contains a React application, a separate React marketing site, a Java API, and a Rust Cargo workspace. They are four separate projects: there is no root-level command that builds or starts all four.
