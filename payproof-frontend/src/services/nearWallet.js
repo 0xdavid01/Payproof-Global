@@ -382,15 +382,32 @@ export async function submitWorkOnChain(escrowId, evidence, expectedAccountId) {
   );
 }
 
-export async function approveWorkOnChain(escrowId, expectedAccountId) {
+export async function approveWorkOnChain(escrowId, expectedAccountId, escrowStatus) {
   if (!escrowId || typeof escrowId !== "string") {
     throw new Error("This project does not have a valid escrow ID.");
   }
 
   await ensureWalletSessionMatches(expectedAccountId);
+
+  const statusKey = String(escrowStatus || "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+
+  let methodName;
+  if (statusKey === "worksubmitted") {
+    methodName = "approve_work";
+  } else if (statusKey === "settlementfailed") {
+    methodName = "retry_failed_settlement";
+  } else {
+    throw new Error(
+      `Cannot release escrow in status "${escrowStatus}". ` +
+      `Only WorkSubmitted or SettlementFailed escrows can be released or retried.`
+    );
+  }
+
   const outcome = await sendFunctionCall({
     receiverId: CONTRACT_ID,
-    methodName: "approve_work",
+    methodName,
     args: { escrow_id: escrowId },
     gas: "100000000000000",
     deposit: "1",
@@ -401,7 +418,9 @@ export async function approveWorkOnChain(escrowId, expectedAccountId) {
     typeof outcome.status === "object" &&
     outcome.status.Failure
   ) {
-    throw new Error("The escrow approval transaction failed on the NEAR blockchain.");
+    throw new Error(
+      `The ${methodName} transaction failed on the NEAR blockchain.`
+    );
   }
 
   return (

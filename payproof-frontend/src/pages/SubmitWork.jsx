@@ -580,9 +580,15 @@ export default function SubmitWork() {
           : null;
       let transactionHash = previousRelease?.hash ?? null;
 
-      if (!previousRelease) {
+            if (!previousRelease) {
         const { approveWorkOnChain } = await import("../services/nearWallet.js");
-        transactionHash = await approveWorkOnChain(job.escrowId, address);
+        const { getEscrowForJob } = await import("../services/escrowService.js");
+        const escrow = await getEscrowForJob(jobId);
+        transactionHash = await approveWorkOnChain(
+          job.escrowId,
+          address,
+          escrow?.status
+        );
         releaseWasSubmitted = true;
         const transaction = {
           escrowId: job.escrowId,
