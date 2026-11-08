@@ -27,8 +27,10 @@ function todayISO() {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-function formatNumber(n) {
-  return Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: 4 }) : "0";
+function formatNumber(n, maximumFractionDigits = 4) {
+  return Number.isFinite(n)
+    ? n.toLocaleString("en-US", { maximumFractionDigits })
+    : "0";
 }
 
 function prettyToday() {
@@ -81,8 +83,16 @@ export default function CreateProject() {
   const validate = () => {
     if (!form.name.trim()) return "Give your project a name.";
     if (!form.description.trim()) return "Add a short description.";
+    if (!/^\d+(?:\.\d*)?$/.test(form.amount.trim())) {
+      return "Enter a valid project amount.";
+    }
     if (!amount || amount <= 0) return "Enter a project amount greater than 0.";
     if (!CURRENCIES.includes(form.currency)) return "Choose a supported currency.";
+    const decimalPlaces = form.amount.split(".")[1]?.length ?? 0;
+    const maxDecimalPlaces = form.currency === "NEAR" ? 8 : 6;
+    if (decimalPlaces > maxDecimalPlaces) {
+      return `${form.currency} supports up to ${maxDecimalPlaces} decimal places.`;
+    }
     if (!form.deadline) return "Pick a target delivery date.";
     if (form.deadline < todayISO()) return "The delivery date can't be in the past.";
     if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return "Enter a valid freelancer email.";
@@ -122,7 +132,7 @@ export default function CreateProject() {
         const created = await createJob({
           title: form.name.trim(),
           description: form.description.trim(),
-          budget: amount,
+          budget: form.currency === "NEAR" ? amount : form.amount,
           currency: form.currency,
           deadline: `${form.deadline}T18:00:00`,
           participantEmail: form.email.trim(),
@@ -249,7 +259,7 @@ export default function CreateProject() {
                     value={form.amount}
                     onChange={set("amount")}
                     disabled={locked || busy}
-                    hint="Platform fee is added at funding."
+                    hint={`Platform fee is added at funding. ${form.currency} supports up to ${form.currency === "NEAR" ? 8 : 6} decimal places.`}
                     required
                   />
 
@@ -371,13 +381,13 @@ export default function CreateProject() {
             <div className="kv">
               <span>Project amount</span>
               <strong>
-                {formatNumber(amount || 0)} {form.currency}
+                {formatNumber(amount || 0, form.currency === "NEAR" ? 4 : 6)} {form.currency}
               </strong>
             </div>
             <div className="kv">
               <span>Platform fee · 3.5%</span>
               <strong>
-                {formatNumber(fee)} {form.currency}
+                {formatNumber(fee, form.currency === "NEAR" ? 4 : 6)} {form.currency}
               </strong>
             </div>
             <hr className="rule" />

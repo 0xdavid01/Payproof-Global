@@ -14,6 +14,9 @@ const isPositiveInteger = (value) =>
   /^\d+$/.test(String(value ?? "")) &&
   BigInt(String(value)) > 0n;
 
+const isNonNegativeInteger = (value) =>
+  /^\d+$/.test(String(value ?? ""));
+
 export class WalletTxError extends Error {
   constructor(kind, message) {
     super(message);
@@ -109,10 +112,12 @@ export function normalizePreparation(input) {
     methodName,
     args,
     attachedDeposit,
+    amount: p.amount ?? null,
     gas: p.gas ?? null,
     decimals: p.decimals ?? p.tokenDecimals ?? null,
     platformFee,
     title: p.title ?? args.title ?? null,
+    description: p.description ?? args.description ?? null,
     clientWalletAddress: p.clientWalletAddress ?? null,
     freelancerWalletAddress: p.freelancerWalletAddress ?? null,
   };
@@ -259,6 +264,13 @@ export function validatePreparation(prep, expectedAccountId) {
   }
 
   if (prep.methodName === "ft_transfer_call") {
+    if (!["USDT", "USDC"].includes(String(prep.asset).toUpperCase())) {
+      throw new WalletTxError(
+        "failed",
+        "The prepared token is not a supported stablecoin."
+      );
+    }
+
     if (!prep.tokenContractId) {
       throw new WalletTxError(
         "failed",
@@ -280,6 +292,18 @@ export function validatePreparation(prep, expectedAccountId) {
       );
     }
 
+    if (
+      !isPositiveInteger(prep.amount) ||
+      !isNonNegativeInteger(prep.platformFee) ||
+      String(prep.attachedDeposit) !== "1" ||
+      BigInt(String(prep.gas ?? GAS_TOKEN)) < BigInt(GAS_NEAR)
+    ) {
+      throw new WalletTxError(
+        "failed",
+        "The prepared token amount, platform fee, deposit, or gas is invalid."
+      );
+    }
+
     let msg = args.msg;
 
     if (typeof msg === "string") {
@@ -297,6 +321,26 @@ export function validatePreparation(prep, expectedAccountId) {
       throw new WalletTxError(
         "failed",
         "The token transfer message does not match the escrow ID."
+      );
+    }
+
+    if (
+      !isPositiveInteger(msg.amount) ||
+      String(msg.amount) !== String(prep.amount) ||
+      BigInt(String(msg.amount)) + BigInt(String(prep.platformFee)) !==
+        BigInt(String(args.amount)) ||
+      !msg.freelancer ||
+      (prep.freelancerWalletAddress &&
+        msg.freelancer !== prep.freelancerWalletAddress) ||
+      typeof msg.title !== "string" ||
+      msg.title.length > 200 ||
+      typeof msg.description !== "string" ||
+      msg.description.length > 5000 ||
+      String(prep.title) !== msg.title
+    ) {
+      throw new WalletTxError(
+        "failed",
+        "The token transfer details do not match the prepared project amount, fee, or freelancer."
       );
     }
 

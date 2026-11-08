@@ -3,7 +3,7 @@ import { request } from "./api.js";
 /**
  * Create a job (client).
  * payload: { title, description, budget, currency, deadline, participantEmail }
- * currency: "NEAR" | "USDT" (PaymentCurrency enum)
+ * currency: "NEAR" | "USDT" | "USDC" (PaymentCurrency enum)
  * deadline format: "2026-12-20T18:00:00"
  */
 export const createJob = (payload) =>

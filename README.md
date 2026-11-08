@@ -17,6 +17,9 @@ The codebase contains a React application, a separate React marketing site, a Ja
     - Escrow → freelancer transfer (3 NEAR, Success): [receipt DQnibmBuT1FtxWXC8AudPriNMT6TU4D32NFBcjeLHgPc](https://testnet.nearblocks.io/receipts/DQnibmBuT1FtxWXC8AudPriNMT6TU4D32NFBcjeLHgPc)
 - Dispute/refund flow: available for eligible projects with active, confirmed escrow. Either participant can raise a dispute; the client can request a refund after the deadline. Requests require a wallet-signed contract call and backend verification, and do not resolve the dispute or move funds.
 
+> **Stablecoin status:** The contract accepts USDT/USDC via NEP-141 `ft_transfer_call`, and the frontend + backend prepare the funding transaction. The backend's NEAR transaction verifier does not yet confirm `ft_transfer_call` receipts, so stablecoin escrow funding is preparation-complete but confirmation-incomplete. NEAR escrow funding is fully end-to-end.
+
+
 > **Implementation note:** This README distinguishes implemented behavior from partial integrations and known gaps. In particular, AI currently extracts a checklist from a project brief; it does not assess submitted work or make payment decisions.
 
 ## Contents
@@ -132,12 +135,12 @@ The agreement is a participant-provided PDF. The application does not currently 
 
 Funding becomes available after the freelancer is assigned and both participants have approved the same agreement version. Both participants need distinct linked NEAR wallets on the configured network. The client opens the project's escrow page and:
 
-1. Requests a funding preparation from the backend. The backend validates the job and wallets, reserves an escrow ID, and returns the NEAR contract call details.
+1. Requests a funding preparation from the backend. The backend validates the job and wallets, reserves an escrow ID, and returns either the NEAR contract call details or the configured USDT/USDC token `ft_transfer_call` details.
 2. Reviews the prepared amount, fee, network, and contract details in the application.
-3. Approves/signs the transaction in the NEAR wallet.
+3. Approves/signs the transaction in the NEAR wallet. For USDT and USDC, the transfer uses six-decimal token units, includes the 3.5% fee in the outer transfer amount, and carries the fee-excluding project amount in the JSON `msg`.
 4. Waits while PayProof checks the transaction through NEAR and reconciles the result with the backend project record.
 
-The current backend escrow-preparation flow supports **NEAR only**, even though the UI and contract source mention other currencies. The code calculates a 3.5% client platform fee in addition to the agreed project amount; the freelancer's intended payout is the full project amount. The wallet may also show a NEAR network fee.
+The backend and frontend prepare both NEAR and configured USDT/USDC funding transactions. The code calculates a 3.5% client platform fee in addition to the agreed project amount; the freelancer's intended payout is the full project amount. The wallet may also show a NEAR network fee. Stablecoin transaction confirmation is not yet supported: the backend verifier currently expects a transaction sent directly to the escrow contract, while `ft_transfer_call` is sent to the token contract.
 
 Funding is not confirmed just because the wallet prompt was approved or a transaction was submitted. Wait for PayProof's verification/status to confirm funding. If a transaction is pending or the status is uncertain, check the existing transaction rather than starting another payment.
 
@@ -190,7 +193,7 @@ FREELANCER: review invitation -> connect/link wallet -> accept
         |
 FREELANCER: upload agreement -> CLIENT approves -> FREELANCER approves same version
         |
-CLIENT: prepare and sign NEAR escrow funding -> backend verifies funding
+CLIENT: prepare and sign NEAR or NEP-141 escrow funding -> backend verifies NEAR; token verification pending
         |
 FREELANCER: submit on-chain evidence and application delivery
         |
@@ -212,10 +215,13 @@ If work is overdue, the client can instead request a refund; either participant 
 | Accept or decline invitation | No | Yes | Freelancer must have a linked and matching wallet to accept; decline does not require the wallet |
 | Upload agreement | No | Yes | No wallet transaction required for PDF upload |
 | Approve agreement | Yes, first | Yes, after client | Application approval; no chain transaction required |
-| Fund escrow | Yes | No | Client's linked wallet signs the NEAR funding transaction |
+| Fund escrow | Yes | No | Client's linked NEAR wallet signs the NEAR or USDT/USDC token transfer |
 | Submit delivery | No | Yes | Freelancer's linked wallet signs the on-chain work-submission call |
 | Review or request changes | Yes | No | Application review; requesting changes does not require a chain transaction |
 | Approve delivery/release funds | Yes | No | Client's linked wallet signs the NEAR release transaction |
+
+
+\* NEAR funding is verified end-to-end. USDT/USDC funding is prepared and signed by the wallet, but backend confirmation is not yet implemented (see [Known limitations](#known-limitations)).
 
 ## Core features and implementation status
 
@@ -229,7 +235,7 @@ If work is overdue, the client can instead request a refund; either participant 
 | Work submissions | Implemented | File and/or external URL submissions with optional notes, versioning, checklist snapshots, review state, and R2 download URLs. |
 | AI-powered verification | Not implemented | No code compares submitted evidence with requirements, produces confidence scores, or authorizes payment using an AI decision. |
 | NEAR wallet linking | Implemented for NEAR | A five-minute challenge is signed with NEP-413; the backend verifies the signature and checks that the public key belongs to the account on the selected network. |
-| Escrow preparation/funding | Partial | Backend reservation and transaction verification currently support NEAR only. Contract source also supports configured USDT/USDC FT flows, but those are not enabled by the backend escrow preparation service. |
+| Escrow preparation/funding | Partial | Frontend and backend prepare NEAR and configured USDT/USDC funding transactions. NEP-141 token transaction verification is not yet supported by the backend, so stablecoin funding cannot currently be confirmed end to end. |
 | Escrow payout | Implemented across on-chain and API steps | Client submits `approve_work` directly on NEAR; the backend verifies the release transaction and updates the database when the submission review is accepted. |
 | Dispute/refund requests | Request flow implemented; resolution tooling incomplete | Either participant can raise a dispute; only the overdue project's client can request a refund in the UI. The backend verifies the NEAR transaction and stores an investigation case and activity event. The resolver/admin dashboard and resolution endpoint are not implemented. |
 | Activity and email notifications | Implemented for selected events | Project activities are persisted and listed. Resend emails are emitted for submission, requested changes, and payout notifications, as well as OTP sign-in. |
@@ -665,7 +671,7 @@ The network enum accepts `TESTNET` or `MAINNET`. The signature verifier currentl
 | `POST /api/jobs/{jobId}/contract/approve` | Either project participant | No body | Records the caller's approval of the current uploaded version; agreement becomes approved only after both client and freelancer approve the same version. |
 | `GET /api/jobs/{jobId}/contract/download-url` | Project participant or pending invitee | None | `ContractDownloadUrlResponse` containing a time-limited signed R2 URL; `404` if no agreement exists. |
 
-`PaymentCurrency` contains `NEAR`, `USDT`, and `USDC`; however, the current backend escrow-preparation implementation rejects non-NEAR currencies with `501 Not Implemented`.
+`PaymentCurrency` contains `NEAR`, `USDT`, and `USDC`. The frontend offers all three currencies. For NEAR, escrow preparation returns `create_and_fund_with_near`; for USDT/USDC it returns `ft_transfer_call` instructions using the configured token contract, one yoctoNEAR attached deposit, and 100 Tgas. Token amounts use six decimals. Stablecoin transaction verification is still incomplete (see [Known limitations](#known-limitations)).
 
 ### Submissions and reviews
 
@@ -698,8 +704,8 @@ Review request fields are `status`, optional `feedback` (max 10,000 characters),
 
 | Method and route | Auth and authorization | Request | Response / behavior |
 |---|---|---|---|
-| `POST /api/escrows` | Owning `CLIENT` | JSON `{ "jobId": "..." }` | Reserves escrow and returns `CreateEscrowResponse` transaction instructions. Requires an approved agreement, assigned freelancer, distinct connected NEAR wallets, positive NEAR amount, and no existing confirmed escrow. Currently NEAR only. |
-| `POST /api/escrows/{escrowId}/confirm` | Owning `CLIENT` | `ConfirmEscrowRequest` JSON: `{ "jobId": "...", "transactionHash": "..." }` | Records the transaction, checks it via NEAR RPC against the reserved signer, contract, function-call arguments, and on-chain escrow state, then returns `escrowId`, `jobId`, `status`, and `isFunded`. |
+| `POST /api/escrows` | Owning `CLIENT` | JSON `{ "jobId": "..." }` | Reserves escrow and returns `CreateEscrowResponse` transaction instructions for NEAR, USDT, or USDC. Requires an approved agreement, assigned freelancer, distinct connected NEAR wallets, a positive supported-precision amount, and no existing confirmed escrow. |
+| `POST /api/escrows/{escrowId}/confirm` | Owning `CLIENT` | `ConfirmEscrowRequest` JSON: `{ "jobId": "...", "transactionHash": "..." }` | Records the transaction and verifies NEAR funding via NEAR RPC against the reserved signer, contract, function-call arguments, and on-chain escrow state, then returns `escrowId`, `jobId`, `status`, and `isFunded`. NEP-141 token transfer verification is not yet implemented. |
 | `POST /api/escrows/jobs/{jobId}/reconcile-release` | Project client or freelancer | No body | Checks whether the saved escrow is released on-chain and reconciles the latest saved submission as accepted; returns `{ "released": boolean }`. |
 | `POST /api/escrows/jobs/{jobId}/disputes` | Project client or the escrow's freelancer | JSON `{ "reason": "...", "transactionHash": "..." }` | Verifies a successful `raise_dispute` call by the participant's linked wallet and that the escrow is `Disputed` on-chain; the contract only accepts `Funded` or `WorkSubmitted` as the pre-dispute state. |
 | `POST /api/escrows/jobs/{jobId}/refund-requests` | Owning client | JSON `{ "reason": "...", "transactionHash": "..." }` | Requires the project deadline to have passed, then verifies a successful client `request_refund` call and records the case. This requests resolver review; it does not transfer funds. |
@@ -739,7 +745,7 @@ The Cargo workspace is pinned to Rust `1.93.0`. Contract code uses NEAR SDK. The
 - `Asset::Near`, funded with an exact attached NEAR deposit through `create_and_fund_with_near`.
 - `Asset::Usdt` and `Asset::Usdc`, accepted through `ft_on_transfer` only from configured token contract IDs using NEP-141 `ft_transfer_call`.
 
-Support in the contract does not mean support in every product layer: backend reservation/funding currently permits NEAR only. The `usdt-stub` crate is a test token, not actual USDT.
+The frontend and backend prepare NEAR and configured USDT/USDC funding calls, but backend transaction verification still assumes a direct call to the escrow contract and therefore cannot yet confirm NEP-141 `ft_transfer_call` transactions end to end. The `usdt-stub` crate is a test token, not actual USDT.
 
 **Lifecycle and important methods:**
 
@@ -974,7 +980,7 @@ This section summarizes source-level controls and operational risks; it is not a
 
 ### Confirmed gaps or mismatches
 
-1. **Escrow asset support differs by layer:** contract code supports NEAR and configured NEP-141 USDT/USDC, but `EscrowCreationService` currently returns `501` unless the job currency is NEAR.
+1. **Stablecoin escrow confirmation is incomplete:** frontend and backend prepare configured USDT/USDC `ft_transfer_call` funding instructions, and the contract accepts configured NEP-141 transfers. However, `NearTransactionVerifier` currently expects the transaction receiver to be the escrow contract; an FT transfer call is sent to the token contract, so backend confirmation/reconciliation does not yet verify stablecoin funding. Do not retry a submitted transfer unless its status has been resolved.
 2. **Platform fee configuration must stay synchronized:** the backend and frontend currently calculate a fixed 3.5% fee, while the admin contract can configure a different fee up to 10%. A different on-chain rate will make funding transactions fail until the application and contract agree.
 3. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
 4. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.

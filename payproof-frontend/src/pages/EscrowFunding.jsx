@@ -391,6 +391,19 @@ export default function EscrowFunding() {
                 return true;
               }
             } catch (err) {
+              const isStablecoin = ["USDT", "USDC"].includes(
+                String(job?.currency).toUpperCase()
+              );
+
+              if (isStablecoin && err.status === 400) {
+                setFailureKind("unknown");
+                setMessage(
+                  `Your ${job.currency} transfer was submitted, but PayProof could not confirm it as funded. Do not submit another transfer until this transaction is resolved.`
+                );
+                setPhase("unknown");
+                return false;
+              }
+
               if (err.status === 400 || err.status === 403) {
                 setFailureKind("failed");
                 setMessage(
@@ -403,7 +416,7 @@ export default function EscrowFunding() {
 
               if (err.status >= 500) {
                 setMessage(
-                  "NEAR verification is temporarily unavailable. Your transaction may still be processing."
+                  `${job?.currency || "NEAR"} funding verification is temporarily unavailable. Your transaction may still be processing.`
                 );
               }
             }
@@ -436,7 +449,7 @@ export default function EscrowFunding() {
         reconcileInFlight.current = false;
       }
     },
-    [jobId, markConfirmed, readBackendFundingStatus]
+    [job?.currency, jobId, markConfirmed, readBackendFundingStatus]
   );
 
   /* ---------------- initial loading ---------------- */
@@ -569,7 +582,7 @@ export default function EscrowFunding() {
     try {
       if (!walletAddress || !isConnected) {
         throw new Error(
-          "Connect your NEAR wallet before funding."
+          `Connect your NEAR wallet before funding with ${job.currency}.`
         );
       }
 
@@ -700,7 +713,7 @@ export default function EscrowFunding() {
         setPhase("unknown");
         setFailureKind("unknown");
         setMessage(
-          "The wallet did not return a transaction hash. Check your NEAR wallet activity before trying again."
+          `The wallet did not return a transaction hash. Check your NEAR wallet activity before trying another ${job.currency} payment.`
         );
         return;
       }
@@ -734,7 +747,7 @@ export default function EscrowFunding() {
         setFailureKind("unknown");
         setPhase("unknown");
         setMessage(
-          "The wallet did not respond within the expected time. The request may still be open. Check your NEAR wallet activity before attempting another payment."
+          `The wallet did not respond within the expected time. The request may still be open. Check your NEAR wallet activity before attempting another ${job.currency} payment.`
         );
 
         console.warn(
@@ -803,7 +816,7 @@ export default function EscrowFunding() {
       }
 
       setMessage(
-        "The backend has not confirmed funding yet. Check your NEAR wallet activity before starting another payment."
+        `The backend has not confirmed funding yet. Check your NEAR wallet activity before starting another ${job.currency} payment.`
       );
       setPhase("unknown");
     } catch (err) {
@@ -1035,7 +1048,7 @@ export default function EscrowFunding() {
       : "You'll see confirmation here before work begins. Do not start work until funding is confirmed."
     : funded
       ? "Your deposit is held until you approve the delivery or a settlement is resolved."
-      : "Both parties approved the agreement. Fund escrow from your NEAR wallet to give your freelancer the go-ahead.";
+      : `Both parties approved the agreement. Fund escrow with ${job.currency} from your NEAR wallet to give your freelancer the go-ahead.`;
 
   return (
     <>
@@ -1211,7 +1224,7 @@ export default function EscrowFunding() {
 
               <p className="muted small spaced-top">
                 {walletReady
-                  ? "Funding takes two steps: PayProof prepares your escrow, then you approve it in your NEAR wallet. Work begins only after PayProof verifies it on-chain."
+                  ? `Funding takes two steps: PayProof prepares your escrow, then you approve the ${job.currency} transfer in your NEAR wallet. Work begins only after PayProof verifies it on-chain.`
                   : "Complete the checks above to enable funding."}
               </p>
             </Card>

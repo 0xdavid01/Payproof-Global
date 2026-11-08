@@ -1,6 +1,7 @@
 package com.example.payproof.service;
 
 import com.example.payproof.components.IDGenerator;
+import com.example.payproof.components.TokenAmountConverter;
 import com.example.payproof.dto.request.CreateEscrowRequest;
 import com.example.payproof.dto.response.CreateEscrowResponse;
 import com.example.payproof.enums.EscrowCreationStatus;
@@ -17,11 +18,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Service
@@ -39,6 +43,8 @@ public class EscrowCreationService {
     private final WalletRepository walletRepository;
     private final IDGenerator idGenerator;
     private final ActivityLogService activityLogService;
+    private final TokenAmountConverter tokenAmountConverter;
+    private final ObjectMapper objectMapper;
 
     @Value("${near.escrow-contract-id}")
     private String escrowContractId;
@@ -76,13 +82,6 @@ public class EscrowCreationService {
             );
         }
 
-        if (job.getCurrency() != PaymentCurrency.NEAR) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_IMPLEMENTED,
-                    "Only NEAR escrow funding is currently enabled"
-            );
-        }
-
         String clientWallet = getConnectedWallet(job.getClient());
         String freelancerWallet = getConnectedWallet(job.getFreelancer());
 
@@ -91,6 +90,10 @@ public class EscrowCreationService {
                     HttpStatus.BAD_REQUEST,
                     "Client and freelancer cannot use the same wallet"
             );
+        }
+
+        if (job.getCurrency() != PaymentCurrency.NEAR) {
+            return prepareTokenEscrow(job, clientWallet, freelancerWallet);
         }
 
         String amount = toYoctoNear(job.getBudget());
@@ -249,6 +252,156 @@ public class EscrowCreationService {
                 .title(job.getTitle())
                 .description(job.getDescription())
                 .message("The attached deposit includes the project amount and the 3.5% client platform fee.")
+                .build();
+    }
+
+    private CreateEscrowResponse prepareTokenEscrow(
+            JobModel job,
+            String clientWallet,
+            String freelancerWallet
+    ) {
+        PaymentCurrency currency = job.getCurrency();
+        String tokenContractId = switch (currency) {
+            case USDT -> usdtContractId;
+            case USDC -> usdcContractId;
+            case NEAR -> throw new IllegalArgumentException(
+                    "NEAR funding must use the NEAR preparation path"
+            );
+        };
+        String amount = tokenAmountConverter
+                .toBaseUnits(job.getBudget(), currency)
+                .toString();
+        String totalFunding = totalFundingAmount(amount);
+
+        if (job.getEscrowCreationStatus() == EscrowCreationStatus.CONFIRMED) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "This job already has a confirmed escrow"
+            );
+        }
+
+        if (job.getEscrowCreationStatus() == EscrowCreationStatus.RESERVED) {
+            if (job.getEscrowCreationTransactionHash() != null
+                    && !job.getEscrowCreationTransactionHash().isBlank()) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "A transaction has already been submitted. Check its status before retrying."
+                );
+            }
+
+            if (!clientWallet.equals(job.getEscrowCreationClientWallet())
+                    || !freelancerWallet.equals(job.getEscrowCreationFreelancerWallet())
+                    || (!totalFunding.equals(job.getEscrowCreationAmount())
+                    && !amount.equals(job.getEscrowCreationAmount()))) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "The existing reservation does not match the current wallets or funding amount."
+                );
+            }
+
+            if (!totalFunding.equals(job.getEscrowCreationAmount())) {
+                job.setEscrowCreationAmount(totalFunding);
+                jobRepository.saveAndFlush(job);
+            }
+
+            return buildTokenPreparation(
+                    job,
+                    job.getEscrowCreationId(),
+                    clientWallet,
+                    freelancerWallet,
+                    tokenContractId,
+                    amount,
+                    totalFunding
+            );
+        }
+
+        String escrowId = idGenerator.generateEscrowId();
+
+        job.setEscrowCreationId(escrowId);
+        job.setEscrowCreationStatus(EscrowCreationStatus.RESERVED);
+        job.setEscrowCreationReservedAt(LocalDateTime.now());
+        job.setEscrowCreationTransactionHash(null);
+        job.setEscrowCreationClientWallet(clientWallet);
+        job.setEscrowCreationFreelancerWallet(freelancerWallet);
+        job.setEscrowCreationAmount(totalFunding);
+
+        jobRepository.saveAndFlush(job);
+
+        return buildTokenPreparation(
+                job,
+                escrowId,
+                clientWallet,
+                freelancerWallet,
+                tokenContractId,
+                amount,
+                totalFunding
+        );
+    }
+
+    private CreateEscrowResponse buildTokenPreparation(
+            JobModel job,
+            String escrowId,
+            String clientWallet,
+            String freelancerWallet,
+            String tokenContractId,
+            String amount,
+            String totalFunding
+    ) {
+        if (escrowId.length() > 100
+                || job.getTitle() == null
+                || job.getTitle().length() > 200
+                || job.getDescription() == null
+                || job.getDescription().length() > 5000) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Escrow ID, title, or description exceeds the token contract limits"
+            );
+        }
+
+        String platformFee = new BigInteger(totalFunding)
+                .subtract(new BigInteger(amount))
+                .toString();
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("escrow_id", escrowId);
+        message.put("freelancer", freelancerWallet);
+        message.put("amount", amount);
+        message.put("title", job.getTitle());
+        message.put("description", job.getDescription());
+
+        String serializedMessage;
+        try {
+            serializedMessage = objectMapper.writeValueAsString(message);
+        } catch (JacksonException exception) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Unable to prepare token escrow funding arguments",
+                    exception
+            );
+        }
+
+        Map<String, Object> args = new LinkedHashMap<>();
+        args.put("receiver_id", escrowContractId);
+        args.put("amount", totalFunding);
+        args.put("msg", serializedMessage);
+        args.put("memo", null);
+
+        return CreateEscrowResponse.builder()
+                .escrowId(escrowId)
+                .jobId(job.getJobId())
+                .network(nearNetwork)
+                .contractId(escrowContractId)
+                .tokenContractId(tokenContractId)
+                .methodName("ft_transfer_call")
+                .clientWalletAddress(clientWallet)
+                .freelancerWalletAddress(freelancerWallet)
+                .asset(job.getCurrency().name())
+                .amount(amount)
+                .platformFee(platformFee)
+                .attachedDeposit("1")
+                .gas(NEAR_GAS)
+                .args(args)
+                .title(job.getTitle())
+                .description(job.getDescription())
+                .message("Sign to fund the escrow with " + job.getCurrency().name())
                 .build();
     }
 

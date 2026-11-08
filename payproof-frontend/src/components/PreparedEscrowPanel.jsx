@@ -4,8 +4,16 @@ import Button from "./Button.jsx";
 import { formatUnits } from "../services/units.js";
 import { NETWORK_LABEL } from "../services/escrowService.js";
 
-function amountText(amount) {
-  return `${formatUnits(amount, 24)} NEAR`;
+function getTokenMessage(args) {
+  if (typeof args?.msg !== "string") {
+    return args?.msg ?? null;
+  }
+
+  try {
+    return JSON.parse(args.msg);
+  } catch {
+    return null;
+  }
 }
 
 export default function PreparedEscrowPanel({
@@ -16,8 +24,24 @@ export default function PreparedEscrowPanel({
   onCancel,
   busy = false,
 }) {
+  const isToken = prep.methodName === "ft_transfer_call";
+  const currency = isToken
+    ? String(prep.asset || job?.currency || "USDT").toUpperCase()
+    : "NEAR";
+  const decimals = isToken ? 6 : 24;
+  const tokenMessage = isToken ? getTokenMessage(prep.args) : null;
+  const projectAmount = isToken
+    ? tokenMessage?.amount
+    : prep.args?.amount;
+  const totalAmount = isToken
+    ? prep.args?.amount
+    : prep.attachedDeposit;
+  const amountText = (amount) =>
+    `${formatUnits(amount, decimals)} ${currency}`;
+
   const freelancer =
     prep.args?.freelancer ??
+    tokenMessage?.freelancer ??
     prep.freelancerWalletAddress ??
     job?.freelancer ??
     "—";
@@ -26,7 +50,7 @@ export default function PreparedEscrowPanel({
     <Card title="Review and approve">
       <p className="card-lead">
         Your escrow is prepared. Nothing has been paid yet.
-        Approve the transaction in your NEAR wallet to fund it.
+        Approve the transaction in your NEAR wallet to fund it with {currency}.
       </p>
 
       <div className="kv">
@@ -41,7 +65,7 @@ export default function PreparedEscrowPanel({
 
       <div className="kv">
         <span>Project amount</span>
-        <strong>{amountText(prep.args?.amount)}</strong>
+        <strong>{amountText(projectAmount)}</strong>
       </div>
 
       <div className="kv">
@@ -51,7 +75,7 @@ export default function PreparedEscrowPanel({
 
       <div className="kv">
         <span>Total charged</span>
-        <strong>{amountText(prep.attachedDeposit)}</strong>
+        <strong>{amountText(totalAmount)}</strong>
       </div>
 
       <div className="kv">
@@ -68,6 +92,13 @@ export default function PreparedEscrowPanel({
         <span>Escrow contract</span>
         <strong className="mono">{prep.contractId}</strong>
       </div>
+
+      {isToken && (
+        <div className="kv">
+          <span>{currency} token contract</span>
+          <strong className="mono">{prep.tokenContractId}</strong>
+        </div>
+      )}
 
       <div className="kv">
         <span>Method</span>
@@ -99,7 +130,7 @@ export default function PreparedEscrowPanel({
 
       <p className="muted small spaced-top">
         Your wallet will show the transaction before you approve it.
-        Funding counts only after PayProof verifies it on NEAR.
+        Funding counts only after PayProof verifies it on {NETWORK_LABEL}.
       </p>
     </Card>
   );
