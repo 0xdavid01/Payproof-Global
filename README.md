@@ -15,10 +15,14 @@ The codebase contains a React application, a separate React marketing site, a Ja
 - End-to-end NEAR testnet run (3 NEAR): a client created a project, funded escrow, the freelancer submitted work, and the client approved payout in the app.
   - Release transaction: [H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH](https://testnet.nearblocks.io/txns/H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH)
     - Escrow → freelancer transfer (3 NEAR, Success): [receipt DQnibmBuT1FtxWXC8AudPriNMT6TU4D32NFBcjeLHgPc](https://testnet.nearblocks.io/receipts/DQnibmBuT1FtxWXC8AudPriNMT6TU4D32NFBcjeLHgPc)
-- Dispute/refund flow: available for eligible projects with active, confirmed escrow. Either participant can raise a dispute; the client can request a refund after the deadline. Requests require a wallet-signed contract call and backend verification, and do not resolve the dispute or move funds.
+- End-to-end USDC testnet run (10.35 USDC): a client funded an escrow via NEP-141 `ft_transfer_call`. The USDC token contract transferred to the escrow contract, which persisted the escrow record.
+  - USDC funding transaction: [BaQ5fXPE4jrmh8h4rj6UpXBdMi5jQjznNbNPLxTVCzZk](https://testnet.nearblocks.io/txns/BaQ5fXPE4jrmh8h4rj6UpXBdMi5jQjznNbNPLxTVCzZk)
+  - Token transfer: 10.35 USDC from `payproof-serverdavid.testnet` to `payproof-escrowdavid.testnet`
+- Atomic refund proof: a duplicate funding attempt with the same escrow ID was rejected by the contract's `used_ids` guard, and the token contract refunded the client in full.
+  - Refunded duplicate transaction: [HF4x61T7ZKs58XJTvhqdhpYBqBVK3ytWib1SA53ARQk](https://testnet.nearblocks.io/txns/HF4x61T7ZKs58XJTvhqdhpYBqBVK3ytWib1SA53ARQk)
+ 
 
-> **Stablecoin status:** The contract accepts USDT/USDC via NEP-141 `ft_transfer_call`, and the frontend + backend prepare the funding transaction. The backend's NEAR transaction verifier does not yet confirm `ft_transfer_call` receipts, so stablecoin escrow funding is preparation-complete but confirmation-incomplete. NEAR escrow funding is fully end-to-end.
-
+> **Stablecoin status:** The contract accepts USDT/USDC via NEP-141 `ft_transfer_call`. A live testnet transaction has funded an escrow with 10.35 USDC ([tx BaQ5fXPE4jrmh8h4rj6UpXBdMi5jQjznNbNPLxTVCzZk](https://testnet.nearblocks.io/txns/BaQ5fXPE4jrmh8h4rj6UpXBdMi5jQjznNbNPLxTVCzZk)). The frontend prepares the funding transaction and the backend verifier now branches on escrow status to confirm NEAR and NEP-141 funding. NEAR escrow funding is fully end-to-end; USDC funding is verified on-chain, and the release step is retried via `retry_failed_settlement` if a payout fails.
 
 > **Implementation note:** This README distinguishes implemented behavior from partial integrations and known gaps. In particular, AI currently extracts a checklist from a project brief; it does not assess submitted work or make payment decisions.
 
