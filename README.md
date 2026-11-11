@@ -6,7 +6,7 @@
 
 PayProof is a project and payment workflow for clients and freelancers. It brings project briefs, requirements, agreements, work submissions, and escrow funding together in a web application backed by a Spring Boot API and NEAR smart contracts.
 
-The codebase contains a React application, a separate React marketing site, a Java API, and a Rust Cargo workspace. They are four separate projects: there is no root-level command that builds or starts all four.
+The codebase contains a React application `payproof-frontend`, a separate React marketing site `payproof-landing-page`, a Java user-facing API (payproof), a Java dispute resolution admin backend `payproof-admin`, a React admin dashboard `payproof-admin-frontend`, a Node signer sidecar for the resolver key `near-signer`, and a Rust Cargo workspace `near_hackathon`. They are seven independent projects: there is no root-level command that builds or starts all of them.
 
 ## Live demo
 
@@ -39,6 +39,8 @@ The codebase contains a React application, a separate React marketing site, a Ja
 - [Local development](#local-development)
 - [REST API](#rest-api)
 - [NEAR smart contracts](#near-smart-contracts)
+- [Signer sidecar](#signer-sidecar-near-signer)
+- [Dispute resolution admin backend](#dispute-resolution-admin-backend-payproof-admin)
 - [AI checklist generation](#ai-checklist-generation)
   - [Why AI does not review submitted work against the checklist](#why-ai-does-not-review-submitted-work-against-the-checklist)
 - [Database and data model](#database-and-data-model)
@@ -68,7 +70,7 @@ The implemented workflow is:
 8. The client reviews the submission and its checklist items. Approval requires a successful on-chain release transaction hash, verified by the backend against NEAR. Requested changes allow a subsequent submission version.
 9. The application records activity and sends email notifications for selected submission/review/payout events.
 
-The escrow contract supports participant disputes and client refund requests. The app now exposes case-submission flows and stores verified requests for later investigation, but it does not provide an admin dashboard or resolver interface. Raising a dispute or requesting a refund moves escrow to `Disputed`; it does not move funds. Only the configured on-chain dispute resolver can decide whether funds are released or refunded. A successful on-chain transaction and backend record update are distinct steps; users must not interpret a frontend status label alone as proof of final chain settlement.
+The escrow contract supports participant disputes and client refund requests. The user app (`payproof`) exposes case-submission flows and stores verified requests; a separate admin backend (`payproof-admin`) provides the resolver interface for proposing, cancelling, and retrying dispute splits. Raising a dispute or requesting a refund moves escrow to `Disputed`; it does not move funds. Only the configured on-chain dispute resolver can decide whether funds are released or refunded. A successful on-chain transaction and backend record update are distinct steps; users must not interpret a frontend status label alone as proof of final chain settlement.
 
 ## End-to-end user journey
 
@@ -181,7 +183,7 @@ The project page offers **Raise a dispute** to either project participant while 
 
 The contract enforces the participant role, active escrow status (`Funded` or `WorkSubmitted`), pause/freeze conditions, and one-yocto deposit. The backend additionally restricts refund requests to the client after the recorded deadline, verifies the final NEAR transaction and disputed escrow state, then saves the requester, reason, transaction hash, and timestamp in `escrow_dispute_cases` and records an activity event. The case record can be reviewed from the project page by its participants. A failed API save after the on-chain call can be retried using the saved transaction instead of signing a second dispute call.
 
-`raise_dispute` is available to either client or freelancer. `request_refund` is client-only and represents a refund request, not an actual refund. Neither operation transfers funds. The project is marked `DISPUTED`, and only the account configured as the contract's `dispute_resolver` can call `resolve_dispute` to choose release to the freelancer or refund to the client. The app currently has no resolver/admin dashboard or resolution API; the recorded case is retained for later investigation. The contract can also freeze an escrow through its admin contract, but that control is not exposed as a user-facing dashboard flow.
+`raise_dispute` is available to either client or freelancer. `request_refund` is client-only and represents a refund request, not an actual refund. Neither operation transfers funds. The project is marked `DISPUTED`, and only the account configured as the contract's `dispute_resolver` can call `resolve_dispute` to choose release to the freelancer or refund to the client. The user app has no resolver/admin dashboard or resolution API; the recorded case is retained for later investigation. A separate admin backend (`payproof-admin`) provides the resolver interface for proposing, cancelling, and retrying dispute splits through a signer sidecar (`near-signer`) that holds the resolver key. The contract can also freeze an escrow through its admin contract, but that control is not exposed as a user-facing dashboard flow.
 
 ### Flow summary
 
@@ -242,7 +244,9 @@ If work is overdue, the client can instead request a refund; either participant 
 | NEAR wallet linking | Implemented for NEAR | A five-minute challenge is signed with NEP-413; the backend verifies the signature and checks that the public key belongs to the account on the selected network. |
 | Escrow preparation/funding | NEAR end-to-end; USDC verified on-chain | NEAR uses create_and_fund_with_near with the fee in the attached deposit. USDT/USDC use ft_transfer_call into ft_on_transfer with atomic validation and automatic refund on failure. A live testnet transaction funded an escrow with 10.35 USDC ([BaQ5fXPE4...](https://testnet.nearblocks.io/txns/BaQ5fXPE4jrmh8h4rj6UpXBdMi5jQjznNbNPLxTVCzZk)). The backend verifier branches on currency to confirm both NEAR and NEP-141 funding.  |
 | Escrow payout | Implemented across on-chain and API steps | Client submits `approve_work` directly on NEAR; the backend verifies the release transaction and updates the database when the submission review is accepted. |
-| Dispute/refund requests | Request flow implemented; resolution tooling incomplete | Either participant can raise a dispute; only the overdue project's client can request a refund in the UI. The backend verifies the NEAR transaction and stores an investigation case and activity event. The resolver/admin dashboard and resolution endpoint are not implemented. |
+| Dispute/refund requests | Request flow in `payproof`; resolver tooling in `payproof-admin` | Either participant can raise a dispute; only the overdue project's client can request a refund in the user app. The backend verifies the NEAR transaction and stores an investigation case. A separate admin backend (`payproof-admin/`) exposes the resolver workflow — propose, cancel, and retry dispute splits — with the resolver key isolated in a Node signer sidecar (`near-signer/`). |
+| Dispute resolution admin | Implemented in `payproof-admin` | Resolver-facing Spring Boot backend with session auth, dispute listing, full dossier (job, PRD, contract, submissions, chain state), propose/cancel/retry endpoints, and a 10-second reconciler that tracks party acceptances from chain. |
+| Signer sidecar | Implemented in `near-signer` | Node process holding the resolver private key. Exposes three HTTP endpoints (`/proposeSplit`, `/cancelSplit`, `/retrySplit`) behind a shared-secret header. The admin backend calls it; the resolver key never enters the Java process. |
 | Activity and email notifications | Implemented for selected events | Project activities are persisted and listed. Resend emails are emitted for submission, requested changes, and payout notifications, as well as OTP sign-in. |
 | Payment receipt | Partial | A receipt page/route exists in the frontend. A dedicated receipt API endpoint is not defined by the current controllers. |
 | Public marketing site | Implemented separately | `payproof-landing-page/` is a standalone React/Vite site. Its sign-up and login links point to the hosted application; the landing site does not call the backend. |
@@ -329,7 +333,7 @@ The browser interacts directly with NEAR for wallet-signed funding, work-submiss
 
 ### Trust assumptions
 
-Dispute outcomes depend on the account configured as the on-chain `dispute_resolver`; the platform administrator chooses that account, and the escrow contract only prevents the resolver from being the escrow contract itself. Users therefore trust the resolver to adjudicate fairly and safeguard its signing key. The admin contract can change platform configuration and pause or freeze escrow operations, creating a potential censorship or service-interruption risk. It does not itself decide disputes or transfer escrow principal; only the configured resolver can choose the dispute outcome, while the contract enforces the corresponding settlement.
+Dispute outcomes depend on the account configured as the on-chain dispute_resolver; the platform administrator chooses that account, and the escrow contract only prevents the resolver from being the escrow contract itself. Users therefore trust the resolver to adjudicate fairly and safeguard its signing key. In this repository, the resolver key is held in a separate Node signer sidecar (near-signer/) with its own HTTP API protected by a shared secret. The admin backend (payproof-admin/) calls it to submit resolver-only contract calls and never sees the key. Compromise of the sidecar grants the three resolver-only methods; it does not grant user actions or direct access to the admin database. The admin contract can change platform configuration and pause or freeze escrow operations, creating a potential censorship or service-interruption risk. It does not itself decide disputes or transfer escrow principal; only the configured resolver can choose the dispute outcome, while the contract enforces the corresponding settlement.
 
 ## Repository structure
 
@@ -341,6 +345,16 @@ payproof-platform/
 │   ├── index.html
 │   ├── public/
 │   └── src/
+├── payproof-admin/              # Spring Boot dispute resolution admin backend
+│   ├── pom.xml
+│   └── src/
+├── payproof-admin-frontend/     # React admin dashboard
+│   ├── package.json
+│   └── src/
+├── near-signer/                 # Node signer sidecar (resolver key)
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── src/index.ts
 ├── payproof/
 │   ├── Dockerfile
 │   ├── .mvn/
@@ -716,7 +730,7 @@ Review request fields are `status`, optional `feedback` (max 10,000 characters),
 | `POST /api/escrows/jobs/{jobId}/refund-requests` | Owning client | JSON `{ "reason": "...", "transactionHash": "..." }` | Requires the project deadline to have passed, then verifies a successful client `request_refund` call and records the case. This requests resolver review; it does not transfer funds. |
 | `GET /api/escrows/jobs/{jobId}/dispute-case` | Project client or the escrow's freelancer | None | Returns the recorded case, or `204 No Content` if no case was recorded. |
 
-Verified requests are persisted in the `escrow_dispute_cases` table and also appear in participant activity. There is currently no admin-facing query endpoint/dashboard or resolver endpoint; system-admin investigation is not yet available through the UI.
+Verified requests are persisted in the `escrow_dispute_cases` table and also appear in participant activity. System-admin investigation and resolver actions are handled by a separate admin backend (`payproof-admin`) with its own API and dashboard — see [Dispute resolution admin backend](#dispute-resolution-admin-backend-payproof-admin).
 
 `CreateEscrowResponse` contains `escrowId`, `jobId`, `network`, `contractId`, `tokenContractId`, `methodName`, `clientWalletAddress`, `freelancerWalletAddress`, `asset`, `amount`, `platformFee`, `attachedDeposit`, `gas`, `args`, `title`, `description`, and `message`. For NEAR, `amount` and `args.amount` are the project amount payable to the freelancer, `platformFee` is the 3.5% client fee, and `attachedDeposit` is their sum.
 
@@ -803,6 +817,123 @@ The `near_hackathon/.github/workflows/` directory contains:
 - A workflow that deletes the temporary staging account when a pull request closes.
 
 These workflows depend on correctly configured repository variables/secrets. They do not execute contract initialization; deploying WASM alone does not configure admin/escrow relationships or unpause the platform. No deployment status or live contract state is asserted by this README.
+
+## Signer sidecar
+
+The resolver's private key is not stored in the admin backend. It lives in a separate Node.js process that signs and submits the three resolver-only contract calls:
+
+- `propose_dispute_split(escrow_id, freelancer_amount, reason)`
+- `cancel_dispute_split(escrow_id, reason)`
+- `retry_split_settlement(escrow_id)`
+
+### Endpoints
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/health` | None | Liveness check |
+| `POST` | `/proposeSplit` | `X-Sidecar-Secret` | Sign + submit `propose_dispute_split` |
+| `POST` | `/cancelSplit` | `X-Sidecar-Secret` | Sign + submit `cancel_dispute_split` |
+| `POST` | `/retrySplit` | `X-Sidecar-Secret` | Sign + submit `retry_split_settlement` |
+
+Every endpoint except `/health` requires the `X-Sidecar-Secret` header to match `SIDECAR_SECRET`. The sidecar binds to `0.0.0.0` and reads its port from `$PORT` (Render-compatible), falling back to `4100` locally.
+
+### Trust boundary
+
+The resolver private key exists only in this process's memory and environment. The admin backend never sees it. A compromise of the sidecar grants an attacker the three resolver-only methods — nothing more. It cannot initiate user actions (fund, submit, approve), cannot move funds outside the contract's dispute flow, and cannot access the admin database.
+
+### Configuration
+
+| Variable | Purpose |
+|---|---|
+| `NEAR_RESOLVER_PRIVATE_KEY` | The `ed25519:...` private key for the resolver account |
+| `RESOLVER_ACCOUNT` | Resolver account ID (`payproof-serverdavid.testnet`) |
+| `CONTRACT_ID` | Escrow contract account |
+| `NEAR_NETWORK` | `testnet` (default) or `mainnet` |
+| `NEAR_RPC_URL` | RPC endpoint |
+| `SIDECAR_SECRET` | 64-hex shared secret used by the admin backend |
+
+### Deployment
+
+Deployed on Render as a Web Service:
+
+- Runtime: Node
+- Build: `npm install && npm run build`
+- Start: `npm start`
+- Live URL: `https://near-signer.onrender.com`
+
+The admin backend reaches it via `SIDECAR_URL=https://near-signer.onrender.com` and `SIDECAR_SECRET=<same value>`.
+
+## Dispute resolution admin backend
+
+A separate Spring Boot service exposing the resolver's workflow. It reads dispute state from the escrow contract, proposes splits through the signer sidecar, and records resolution history in its own database tables.
+
+The admin backend does not replace the user app. It runs alongside `payproof`, uses the same Neon PostgreSQL instance but its own tables, and reads the user app's `jobs`, `users`, `wallets`, and `escrow_dispute_cases` tables as immutable views.
+
+### Endpoints
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | Public | Admin email/password login, sets `SESSION` cookie |
+| `POST` | `/api/auth/logout` | Session | Revokes the session |
+| `GET` | `/api/auth/me` | Session | Returns the logged-in admin |
+| `GET` | `/api/disputes` | Session | Lists disputes from `escrow_dispute_cases` |
+| `GET` | `/api/disputes/{escrowId}` | Session | Single dispute with live chain state |
+| `GET` | `/api/disputes/{escrowId}/dossier` | Session | Full case: job, PRD, contract, submissions, requirements, chain state |
+| `GET` | `/api/disputes/{escrowId}/escrow` | Session | Live escrow from chain |
+| `GET` | `/api/disputes/{escrowId}/proposal` | Session | Live proposal from chain |
+| `GET` | `/api/disputes/{escrowId}/split` | Session | Live settlement state from chain |
+| `POST` | `/api/disputes/{escrowId}/propose` | Session | Resolver proposes a split |
+| `POST` | `/api/disputes/{escrowId}/cancel` | Session | Resolver cancels a proposal |
+| `POST` | `/api/disputes/{escrowId}/retry` | Session | Resolver retries a failed split |
+| `GET` | `/api/chain/config` | Session | Live platform configuration |
+| `GET` | `/api/chain/fees` | Session | Accrued platform fees |
+| `GET` | `/api/chain/tx/{hash}` | Session | Transaction status |
+| `POST` | `/api/bans` | Session | Ban a user (writes `users.status = SUSPENDED`) |
+| `DELETE` | `/api/bans/{userId}` | Session | Unban a user |
+| `GET` | `/api/bans` | Session | List suspended users |
+| `GET` | `/api/bans/{userId}` | Session | Single user's ban status |
+| `GET` | `/api/bans/{userId}/history` | Session | Ban/unban audit trail |
+
+### Data model
+
+The admin service owns six tables, created by Hibernate `ddl-auto=update` on first startup:
+
+- `admin_users` — admin accounts (separate from `users`)
+- `admin_sessions` — session tokens (revocable, 30-minute TTL)
+- `dispute_proposals` — local snapshot of the current proposal per escrow
+- `dispute_proposal_events` — audit trail of chain-observed transitions
+- `transactions` — audit of propose / cancel / retry transactions
+- `ban_audit` — audit of every ban and unban action
+
+The upstream `users`, `wallets`, `jobs`, and `escrow_dispute_cases` tables are mapped as `@Immutable` entities — read-only. The only write to `users` happens through a narrow `UserStatusWriter` that updates exactly two columns (`status` and `updated_at`) for the ban flow. No other column is touched.
+
+### Reconciliation
+
+A `@Scheduled` reconciler polls `get_dispute_proposal` and `get_escrow` every 10 seconds for open proposals. It updates the local `chain_client_accepted` and `chain_freelancer_accepted` flags and the proposal status. When a party accepts on-chain through the user app, the admin UI reflects it within one reconciliation cycle.
+
+### Deployment
+
+Deployed on Render as a Web Service:
+
+- Runtime: Java 21, Maven build
+- Build: `mvn clean package -DskipTests`
+- Start: `java -jar target/*.jar`
+- Live URL: `https://payproof-admin-backend.onrender.com`
+
+Environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Neon JDBC URL (`jdbc:postgresql://...`) |
+| `DATABASE_USER` | Neon user |
+| `DATABASE_PASSWORD` | Neon password |
+| `SIDECAR_URL` | `https://near-signer.onrender.com` |
+| `SIDECAR_SECRET` | Same 64-hex value as the sidecar |
+| `COOKIE_SECURE` | `true` in production |
+| `CORS_ALLOWED_ORIGINS` | Frontend origin |
+| `BOOTSTRAP_ADMIN_ID` / `_EMAIL` / `_PASSWORD` | First admin seeded on startup |
+
+The admin frontend is served from `https://admin.payproof.site` (or `https://payproof-admin-frontend.onrender.com` during testing).
 
 ## AI checklist generation
 
@@ -953,6 +1084,10 @@ macOS/Linux equivalents use `./mvnw test`; the npm and Cargo commands are the sa
 
 `payproof-frontend/package.json` provides `npm run build` and `npm run preview`. Publish the generated `dist/` output to a static hosting provider and configure the backend origin and NEAR network/contract ID for that environment. No frontend deployment workflow or hosting configuration was found.
 
+### Admin frontend
+
+A React dashboard deployed as a static site at `https://admin.payproof.site`. It calls the admin backend at `https://payproof-admin-backend.onrender.com`. Authentication uses the same `SESSION` cookie pattern as the user app.
+
 ### Backend and PostgreSQL
 
 The backend includes `payproof/Dockerfile`, which exposes port `8080` and runs the packaged Spring Boot JAR. Its Java 21 image matches the Maven Java 21 declaration. No Docker Compose file or backend deployment workflow was found.
@@ -989,6 +1124,7 @@ These are deployment recommendations, not claims that a hosted production deploy
 - **External services and logs:** PRD text goes to DeepSeek. Debug logging in the AI service includes the raw model response. Restrict log access and avoid uploading confidential project documents without permission.
 - **Secrets:** database passwords, OAuth credentials, R2 keys, Resend/DeepSeek API keys, and NEAR signing keys must be managed outside source control. Frontend `VITE_*` values are public.
 - **Contract controls:** escrow starts paused/unconfigured and relies on admin configuration and resolver identity. The test token has unrestricted minting. Verify deployed contract code/state and admin key custody before using funds.
+- **Resolver key isolation:** the resolver private key lives only in the `near-signer` process. It is never embedded in the admin backend, the user app, or any frontend bundle. Rotation requires updating the sidecar's `NEAR_RESOLVER_PRIVATE_KEY` and restarting the service; the admin backend and user app require no changes. The sidecar is protected by a shared secret and, in its deployed configuration, is only reachable by the admin backend's `SIDECAR_URL`.
 - **Configuration caveat:** `server.error.include-message=always` and `server.error.include-stacktrace=always` are set in the checked-in application properties. Review and override these settings for production so internal exception detail is not disclosed in API errors.
 - **AI scope:** the model generates checklist items only; it never reviews deliverables or authorizes payment. Final acceptance requires a human client review plus an on-chain `approve_work` signature.
 
@@ -1002,19 +1138,19 @@ This section summarizes source-level controls and operational risks; it is not a
 2. **Platform fee configuration must stay synchronized:** the backend and frontend currently calculate a fixed 3.5% fee, while the admin contract can configure a different fee up to 10%. A different on-chain rate will make funding transactions fail until the application and contract agree.
 3. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
 4. **No AI deliverable** verification: DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
-5. **Dispute resolution/admin UI gap:** participant dispute and client refund-request submission are exposed and logged, but the configured resolver's release/refund decision, failed-settlement retry controls, admin review endpoint, and admin dashboard are not exposed through the application.
+5. **Dispute resolution scope split**: participant dispute and client refund-request submission are exposed and logged in the user app (payproof). The resolver's release/refund decision, failed-settlement retry controls, admin review endpoint, and admin dashboard are exposed in a separate admin backend (payproof-admin) and its frontend (payproof-admin-frontend), deployed independently. The user-facing app does not embed admin tooling; the admin app does not expose user flows.
 6. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
 7. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.
 8. **Test coverage:** backend contains a context-load smoke test and neither frontend has a configured test runner/script in `package.json`. Contract tests exist, but were not run for this change.
 9. **Deployment state is unverified:** checked-in properties/workflows provide configuration paths, but no live database, provider credentials, deployed contract state, or successful release was verified here.
 10. **Rust subproject README is stale:** `near_hackathon/README.md` still describes a basic auction tutorial; the Cargo workspace and contract source instead contain PayProof admin, escrow, and test-token contracts.
 11. **Google role selection in the login UI:** the backend accepts `CLIENT` or `FREELANCER` for Google OAuth, but the login page starts Google sign-in with `CLIENT` and has no role picker on that screen.
-12. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or cancellation settlement flow. Participant dispute and client refund-request submission are implemented; resolver and admin tooling are not. Treat the unsupported claims as aspirational, not as shipped functionality.
+12. **Marketing copy exceeds implemented dispute features:** the public landing page describes AI dispute recommendations and cancellation settlement flows, but this checkout has no corresponding AI evaluator or cancellation settlement flow. Participant dispute and client refund-request submission are implemented, and resolver/admin tooling is provided by the separate `payproof-admin` application with the `near-signer` sidecar. The landing-page claims about AI dispute recommendations and cancellation settlement flows remain unsupported; treat those claims as aspirational, not as shipped functionality.
 13. **Deployed contract differs from checked-in source on `approve_work` deposit check:** the testnet deployment at `payproof-escrowdavid.testnet` accepted a 0-deposit `approve_work` call (tx `H5pi7DjAgS1yKM2Z7LzvpUs6atPgMbYSKCfckCCFT5XH`), while `contracts/escrow/src/lib.rs` in this repository includes `assert_one_yocto()`. Rebuild and redeploy from the checked-in source before production use.
 
 ### Features not represented as implemented
 
-The source does not establish AI scoring of submitted work, automatic AI payment approval, general-purpose wallet sign-in, a full dispute-resolution UI/API, or production-ready token support via the `usdt-stub`. Treat these as absent or incomplete, not shipped capabilities.
+The source does not establish AI scoring of submitted work, automatic AI payment approval, general-purpose wallet sign-in, or production-ready token support via the `usdt-stub`. The full dispute-resolution UI/API exists but lives in a separate admin application (`payproof-admin` + `payproof-admin-frontend`), not in the user app.
 
 ## Contributing
 
