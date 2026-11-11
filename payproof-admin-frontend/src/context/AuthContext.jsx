@@ -26,11 +26,19 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const resp = await authApi.login(email, password); // { token, expiresAt, admin }
+    if (!resp?.token) {
+      throw new Error('The server did not return a session token.');
+    }
     tokenStore.set(resp.token);
     try {
       setUser(await authApi.me());
-    } catch {
-      setUser(resp.admin);
+    } catch (err) {
+      tokenStore.clear();
+      throw new Error(
+        err.status === 401
+          ? 'Signed in, but the server rejected the session token. Check the backend auth filter.'
+          : err.message
+      );
     }
   }, []);
 

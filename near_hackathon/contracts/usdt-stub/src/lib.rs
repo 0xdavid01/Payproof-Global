@@ -54,12 +54,14 @@ impl UsdtStub {
         })
     }
 
+    #[payable]
     pub fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, _memo: Option<String>) {
         near_sdk::assert_one_yocto();
         let sender = env::predecessor_account_id();
         self.internal_transfer(&sender, &receiver_id, amount.0);
     }
 
+    #[payable]
     pub fn ft_transfer_call(
         &mut self,
         receiver_id: AccountId,
