@@ -1,5 +1,6 @@
 package com.example.payproof.service;
 
+import com.example.payproof.dto.response.DisputeProposalResponse;
 import com.example.payproof.dto.response.EscrowDetailsResponse;
 import com.example.payproof.enums.EscrowCreationStatus;
 import com.example.payproof.enums.SubmissionReviewStatus;
@@ -145,5 +146,51 @@ public class EscrowQueryService {
                 secondsAndNanos[0].longValueExact(),
                 secondsAndNanos[1].longValueExact()
         ).toString();
+    }
+
+    public DisputeProposalResponse getDisputeProposal(String jobId, UserModel requester) {
+        JobModel job = jobRepository.findById(jobId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found"));
+
+        boolean isClient = job.getClient().getUserId().equals(requester.getUserId());
+        boolean isFreelancer = job.getFreelancer() != null
+                && job.getFreelancer().getUserId().equals(requester.getUserId());
+        if (!isClient && !isFreelancer) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only project participants can view the proposal");
+        }
+        if (job.getEscrowId() == null || job.getEscrowId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No escrow for this job");
+        }
+
+        JsonNode proposal = nearTransactionVerifier.readProposal(job.getEscrowId());
+        if (proposal == null || proposal.isNull()) {
+            return null;
+        }
+
+        boolean clientAcc = proposal.path("client_accepted").asBoolean(false);
+        boolean freelancerAcc = proposal.path("freelancer_accepted").asBoolean(false);
+
+        String myRole = isClient ? "CLIENT" : "FREELANCER";
+        boolean iAccepted = isClient ? clientAcc : freelancerAcc;
+        boolean otherAccepted = isClient ? freelancerAcc : clientAcc;
+
+        boolean canAccept = !iAccepted && !clientAcc && !freelancerAcc;
+        boolean canReject = !iAccepted;
+        boolean canRevoke = iAccepted && !otherAccepted;
+
+        return new DisputeProposalResponse(
+                job.getEscrowId(),
+                proposal.path("freelancer_amount").asText(),
+                proposal.path("client_amount").asText(),
+                proposal.path("fee").asText(),
+                proposal.path("reason").asText(),
+                clientAcc,
+                freelancerAcc,
+                myRole,
+                canAccept,
+                canReject,
+                canRevoke
+        );
     }
 }

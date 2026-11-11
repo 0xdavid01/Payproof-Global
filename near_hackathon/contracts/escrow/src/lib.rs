@@ -43,6 +43,14 @@ pub trait EscrowCallbacks {
         amount: U128,
         #[callback_result] result: Result<(), near_sdk::PromiseError>,
     );
+
+    fn on_split_settlement_complete(
+        &mut self,
+        escrow_id: String,
+        operation_id: u64,
+        #[callback_result] freelancer_result: Result<(), near_sdk::PromiseError>,
+        #[callback_result] client_result: Result<(), near_sdk::PromiseError>,
+    );
 }
 
 #[near(serializers = [borsh, json])]
@@ -68,6 +76,7 @@ pub enum EscrowStatus {
     SettlementFailed,
     Released,
     Refunded,
+    SplitProposed,
 }
 
 #[near(serializers = [borsh, json])]
@@ -97,6 +106,12 @@ pub struct Escrow {
     pub settlement_amount: u128,
     pub settlement_recipient: Option<AccountId>,
     pub settlement_is_refund: bool,
+    pub dispute_proposal: Option<DisputeProposal>,
+    pub proposal_count: u64,
+    pub settlement_client_amount: u128,
+    pub settlement_fee: u128,
+    pub settlement_freelancer_leg_done: bool,
+    pub settlement_client_leg_done: bool,
 }
 
 #[near(serializers = [borsh, json])]
@@ -119,6 +134,27 @@ pub struct CreateAndFundFtMessage {
     pub title: String,
     pub description: String,
 }
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug)]
+pub struct DisputeProposal {
+    pub freelancer_amount: u128,
+    pub client_amount: u128,
+    pub fee: u128,
+    pub reason: String,
+    pub proposed_by: AccountId,
+    pub proposed_at: u64,
+    pub client_accepted: bool,
+    pub freelancer_accepted: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Party {
+    Client,
+    Freelancer,
+}
+
+const MAX_DISPUTE_PROPOSALS: u64 = 10;
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -388,6 +424,12 @@ impl EscrowContract {
             settlement_amount: 0,
             settlement_recipient: None,
             settlement_is_refund: false,
+            dispute_proposal: None,
+            proposal_count: 0,
+            settlement_client_amount: 0,
+            settlement_fee: 0,
+            settlement_freelancer_leg_done: false,
+            settlement_client_leg_done: false,
         };
 
         self.escrows.insert(escrow_id.clone(), escrow);
@@ -1469,5 +1511,491 @@ impl EscrowContract {
 
     pub fn get_operation_version(&self) -> u64 {
         self.operation_version
+    }
+}
+
+// =====================================================================
+// Dispute Split Settlement — additive block
+// =====================================================================
+
+#[near]
+impl EscrowContract {
+    fn assert_escrow_party(escrow: &Escrow) -> Party {
+        let caller = env::predecessor_account_id();
+        if caller == escrow.client {
+            Party::Client
+        } else if caller == escrow.freelancer {
+            Party::Freelancer
+        } else {
+            env::panic_str("Only the escrow client or freelancer can perform this action")
+        }
+    }
+
+    #[payable]
+    pub fn propose_dispute_split(
+        &mut self,
+        escrow_id: String,
+        freelancer_amount: U128,
+        reason: String,
+    ) {
+        assert_one_yocto();
+        self.assert_resolver();
+        Self::assert_reason(&reason);
+
+        let mut escrow = self.load_escrow(&escrow_id);
+
+        assert_eq!(escrow.status, EscrowStatus::Disputed, "Escrow is not disputed");
+        assert!(!escrow.frozen, "Escrow is frozen");
+        assert!(escrow.dispute_proposal.is_none(), "A proposal is already open");
+        assert!(
+            escrow.proposal_count < MAX_DISPUTE_PROPOSALS,
+            "Maximum number of proposals reached"
+        );
+
+        assert!(
+            freelancer_amount.0 <= escrow.funded_amount,
+            "Freelancer amount exceeds funded amount"
+        );
+
+        let fee = self.fee_for(freelancer_amount.0, escrow.platform_fee_bps);
+        assert!(
+            freelancer_amount.0 >= fee,
+            "Freelancer amount must cover the platform fee"
+        );
+        let client_amount = escrow
+            .funded_amount
+            .checked_sub(freelancer_amount.0)
+            .expect("split underflow");
+
+        escrow.proposal_count = escrow.proposal_count.saturating_add(1);
+        escrow.status = EscrowStatus::SplitProposed;
+        escrow.dispute_proposal = Some(DisputeProposal {
+            freelancer_amount: freelancer_amount.0,
+            client_amount,
+            fee,
+            reason: reason.clone(),
+            proposed_by: env::predecessor_account_id(),
+            proposed_at: env::block_timestamp(),
+            client_accepted: false,
+            freelancer_accepted: false,
+        });
+
+        self.save_escrow(escrow);
+
+        self.log_event(
+            "DISPUTE_SPLIT_PROPOSED",
+            json!({
+                "escrow_id": escrow_id,
+                "freelancer_amount": freelancer_amount.0.to_string(),
+                "client_amount": client_amount.to_string(),
+                "fee": fee.to_string(),
+                "reason": reason
+            }),
+        );
+    }
+
+    #[payable]
+    pub fn accept_dispute_split(&mut self, escrow_id: String) -> PromiseOrValue<()> {
+        assert_one_yocto();
+        self.assert_not_paused();
+
+        let mut escrow = self.load_escrow(&escrow_id);
+
+        let party = Self::assert_escrow_party(&escrow);
+
+        assert_eq!(escrow.status, EscrowStatus::SplitProposed, "No proposal is open");
+        assert!(!escrow.frozen, "Escrow is frozen");
+
+        let mut proposal = escrow.dispute_proposal.clone().expect("missing proposal");
+
+        match party {
+            Party::Client => {
+                assert!(!proposal.client_accepted, "Client already accepted");
+                proposal.client_accepted = true;
+            }
+            Party::Freelancer => {
+                assert!(!proposal.freelancer_accepted, "Freelancer already accepted");
+                proposal.freelancer_accepted = true;
+            }
+        }
+
+        let both_accepted = proposal.client_accepted && proposal.freelancer_accepted;
+
+        if both_accepted {
+            let reason = proposal.reason.clone();
+            let freelancer_amount = proposal.freelancer_amount;
+            let fee = proposal.fee;
+            let client_amount = proposal.client_amount;
+
+            escrow.dispute_proposal = None;
+
+            PromiseOrValue::Promise(self.begin_split_settlement(
+                escrow,
+                freelancer_amount,
+                fee,
+                client_amount,
+                reason,
+            ))
+        } else {
+            escrow.dispute_proposal = Some(proposal.clone());
+            self.save_escrow(escrow);
+
+            self.log_event(
+                "DISPUTE_SPLIT_ACCEPTED_ONE_SIDE",
+                json!({
+                    "escrow_id": escrow_id,
+                    "accepted_by": env::predecessor_account_id(),
+                    "party": match party { Party::Client => "client", Party::Freelancer => "freelancer" },
+                    "client_accepted": proposal.client_accepted,
+                    "freelancer_accepted": proposal.freelancer_accepted
+                }),
+            );
+
+            PromiseOrValue::Value(())
+        }
+    }
+
+    #[payable]
+    pub fn reject_dispute_split(&mut self, escrow_id: String, reason: String) {
+        assert_one_yocto();
+        self.assert_not_paused();
+        Self::assert_reason(&reason);
+
+        let mut escrow = self.load_escrow(&escrow_id);
+
+        let party = Self::assert_escrow_party(&escrow);
+
+        assert_eq!(escrow.status, EscrowStatus::SplitProposed, "No proposal is open");
+
+        escrow.dispute_proposal = None;
+        escrow.status = EscrowStatus::Disputed;
+        self.save_escrow(escrow);
+
+        self.log_event(
+            "DISPUTE_SPLIT_REJECTED",
+            json!({
+                "escrow_id": escrow_id,
+                "rejected_by": env::predecessor_account_id(),
+                "party": match party { Party::Client => "client", Party::Freelancer => "freelancer" },
+                "reason": reason
+            }),
+        );
+    }
+
+    #[payable]
+    pub fn revoke_dispute_acceptance(&mut self, escrow_id: String) {
+        assert_one_yocto();
+        self.assert_not_paused();
+
+        let mut escrow = self.load_escrow(&escrow_id);
+
+        let party = Self::assert_escrow_party(&escrow);
+
+        assert_eq!(escrow.status, EscrowStatus::SplitProposed, "No proposal is open");
+
+        let mut proposal = escrow.dispute_proposal.clone().expect("missing proposal");
+
+        match party {
+            Party::Client => {
+                assert!(proposal.client_accepted, "Client has not accepted");
+                proposal.client_accepted = false;
+            }
+            Party::Freelancer => {
+                assert!(proposal.freelancer_accepted, "Freelancer has not accepted");
+                proposal.freelancer_accepted = false;
+            }
+        }
+
+        escrow.dispute_proposal = Some(proposal);
+        self.save_escrow(escrow);
+
+        self.log_event(
+            "DISPUTE_SPLIT_ACCEPTANCE_REVOKED",
+            json!({
+                "escrow_id": escrow_id,
+                "revoked_by": env::predecessor_account_id(),
+                "party": match party { Party::Client => "client", Party::Freelancer => "freelancer" }
+            }),
+        );
+    }
+
+    #[payable]
+    pub fn cancel_dispute_split(&mut self, escrow_id: String, reason: String) {
+        assert_one_yocto();
+        self.assert_resolver();
+        Self::assert_reason(&reason);
+
+        let mut escrow = self.load_escrow(&escrow_id);
+        assert_eq!(escrow.status, EscrowStatus::SplitProposed, "No proposal is open");
+
+        escrow.dispute_proposal = None;
+        escrow.status = EscrowStatus::Disputed;
+        self.save_escrow(escrow);
+
+        self.log_event(
+            "DISPUTE_SPLIT_CANCELLED",
+            json!({
+                "escrow_id": escrow_id,
+                "reason": reason
+            }),
+        );
+    }
+
+    fn begin_split_settlement(
+        &mut self,
+        mut escrow: Escrow,
+        freelancer_amount: u128,
+        fee: u128,
+        client_amount: u128,
+        reason: String,
+    ) -> Promise {
+        let operation_id = self.next_operation_id();
+
+        escrow.status = EscrowStatus::Releasing;
+        escrow.platform_fee = fee;
+        escrow.settlement_operation_id = Some(operation_id);
+        escrow.settlement_amount = freelancer_amount - fee;
+        escrow.settlement_recipient = Some(escrow.freelancer.clone());
+        escrow.settlement_is_refund = false;
+        escrow.settlement_client_amount = client_amount;
+        escrow.settlement_fee = fee;
+        escrow.settlement_freelancer_leg_done = false;
+        escrow.settlement_client_leg_done = false;
+
+        self.save_escrow(escrow.clone());
+
+        self.log_event(
+            "DISPUTE_SPLIT_SETTLING",
+            json!({
+                "escrow_id": escrow.escrow_id,
+                "operation_id": operation_id,
+                "freelancer_payout": (freelancer_amount - fee).to_string(),
+                "client_refund": client_amount.to_string(),
+                "fee": fee.to_string(),
+                "reason": reason
+            }),
+        );
+
+        self.split_settlement_and_callback(
+            escrow.escrow_id,
+            operation_id,
+            escrow.asset,
+            escrow.freelancer,
+            freelancer_amount - fee,
+            escrow.client,
+            client_amount,
+        )
+    }
+
+    fn transfer_leg(
+        &self,
+        asset: &Asset,
+        recipient: AccountId,
+        amount: u128,
+        escrow_id: &str,
+    ) -> Promise {
+        match asset {
+            Asset::Near => Promise::new(recipient).transfer(NearToken::from_yoctonear(amount)),
+            Asset::Usdt | Asset::Usdc => ext_ft::ext(self.token_contract_for(asset))
+                .with_attached_deposit(NearToken::from_yoctonear(1))
+                .with_static_gas(FT_TRANSFER_GAS)
+                .ft_transfer(
+                    recipient,
+                    U128(amount),
+                    Some(format!("PayProof escrow {} (split)", escrow_id)),
+                ),
+        }
+    }
+
+    fn split_settlement_and_callback(
+        &self,
+        escrow_id: String,
+        operation_id: u64,
+        asset: Asset,
+        freelancer: AccountId,
+        freelancer_amount: u128,
+        client: AccountId,
+        client_amount: u128,
+    ) -> Promise {
+        let freelancer_leg = if freelancer_amount > 0 {
+            self.transfer_leg(&asset, freelancer, freelancer_amount, &escrow_id)
+        } else {
+            Promise::new(env::current_account_id())
+        };
+        let client_leg = if client_amount > 0 {
+            self.transfer_leg(&asset, client, client_amount, &escrow_id)
+        } else {
+            Promise::new(env::current_account_id())
+        };
+
+        freelancer_leg.and(client_leg).then(
+            ext_self::ext(env::current_account_id())
+                .with_static_gas(CALLBACK_GAS)
+                .on_split_settlement_complete(escrow_id, operation_id),
+        )
+    }
+
+    #[private]
+    pub fn on_split_settlement_complete(
+        &mut self,
+        escrow_id: String,
+        operation_id: u64,
+        #[callback_result] freelancer_result: Result<(), near_sdk::PromiseError>,
+        #[callback_result] client_result: Result<(), near_sdk::PromiseError>,
+    ) {
+        let mut escrow = match self.escrows.get(&escrow_id).cloned() {
+            Some(v) => v,
+            None => {
+                env::log_str("Split callback: escrow not found");
+                return;
+            }
+        };
+
+        if escrow.settlement_operation_id != Some(operation_id) {
+            env::log_str("Split callback ignored: stale operation");
+            return;
+        }
+
+        if freelancer_result.is_ok() {
+            escrow.settlement_freelancer_leg_done = true;
+        }
+        if client_result.is_ok() {
+            escrow.settlement_client_leg_done = true;
+        }
+
+        let all_done =
+            escrow.settlement_freelancer_leg_done && escrow.settlement_client_leg_done;
+
+        if all_done {
+            escrow.status = EscrowStatus::Released;
+
+            match escrow.asset {
+                Asset::Near => {
+                    self.accrued_near_fees = self
+                        .accrued_near_fees
+                        .checked_add(escrow.settlement_fee)
+                        .expect("NEAR fee accounting overflow");
+                }
+                Asset::Usdt => {
+                    self.accrued_usdt_fees = self
+                        .accrued_usdt_fees
+                        .checked_add(escrow.settlement_fee)
+                        .expect("USDT fee accounting overflow");
+                }
+                Asset::Usdc => {
+                    self.accrued_usdc_fees = self
+                        .accrued_usdc_fees
+                        .checked_add(escrow.settlement_fee)
+                        .expect("USDC fee accounting overflow");
+                }
+            }
+
+            self.log_event(
+                "DISPUTE_SPLIT_COMPLETED",
+                json!({
+                    "escrow_id": escrow_id,
+                    "operation_id": operation_id,
+                    "freelancer_payout": escrow.settlement_amount.to_string(),
+                    "client_refund": escrow.settlement_client_amount.to_string(),
+                    "fee": escrow.settlement_fee.to_string()
+                }),
+            );
+        } else {
+            escrow.status = EscrowStatus::SettlementFailed;
+
+            self.log_event(
+                "SETTLEMENT_FAILED",
+                json!({
+                    "escrow_id": escrow_id,
+                    "operation_id": operation_id,
+                    "freelancer_leg_ok": freelancer_result.is_ok(),
+                    "client_leg_ok": client_result.is_ok(),
+                    "freelancer_payout": escrow.settlement_amount.to_string(),
+                    "client_refund": escrow.settlement_client_amount.to_string()
+                }),
+            );
+        }
+
+        escrow.settlement_operation_id = None;
+        self.save_escrow(escrow);
+    }
+
+    #[payable]
+    pub fn retry_split_settlement(&mut self, escrow_id: String) -> Promise {
+        assert_one_yocto();
+
+        let mut escrow = self.load_escrow(&escrow_id);
+        let caller = env::predecessor_account_id();
+
+        assert!(
+            caller == escrow.client
+                || caller == escrow.freelancer
+                || Some(caller.clone()) == self.dispute_resolver,
+            "Only an escrow party or the resolver can retry"
+        );
+
+        assert_eq!(
+            escrow.status,
+            EscrowStatus::SettlementFailed,
+            "Settlement has not failed"
+        );
+        assert!(!escrow.frozen, "Escrow is frozen");
+        assert!(
+            escrow.settlement_client_amount > 0 || escrow.settlement_fee > 0,
+            "Not a split settlement"
+        );
+
+        let operation_id = self.next_operation_id();
+        escrow.status = EscrowStatus::Releasing;
+        escrow.settlement_operation_id = Some(operation_id);
+        self.save_escrow(escrow.clone());
+
+        let freelancer_leg = if !escrow.settlement_freelancer_leg_done {
+            self.transfer_leg(
+                &escrow.asset,
+                escrow.freelancer.clone(),
+                escrow.settlement_amount,
+                &escrow_id,
+            )
+        } else {
+            Promise::new(env::current_account_id())
+        };
+
+        let client_leg = if !escrow.settlement_client_leg_done {
+            self.transfer_leg(
+                &escrow.asset,
+                escrow.client.clone(),
+                escrow.settlement_client_amount,
+                &escrow_id,
+            )
+        } else {
+            Promise::new(env::current_account_id())
+        };
+
+        freelancer_leg.and(client_leg).then(
+            ext_self::ext(env::current_account_id())
+                .with_static_gas(CALLBACK_GAS)
+                .on_split_settlement_complete(escrow_id, operation_id),
+        )
+    }
+
+    pub fn get_dispute_proposal(&self, escrow_id: String) -> Option<DisputeProposal> {
+        self.escrows
+            .get(&escrow_id)
+            .and_then(|e| e.dispute_proposal.clone())
+    }
+
+    pub fn get_split_settlement(&self, escrow_id: String) -> Option<Value> {
+        self.escrows.get(&escrow_id).map(|e| {
+            json!({
+                "freelancer_payout": e.settlement_amount.to_string(),
+                "client_refund": e.settlement_client_amount.to_string(),
+                "fee": e.settlement_fee.to_string(),
+                "freelancer_leg_done": e.settlement_freelancer_leg_done,
+                "client_leg_done": e.settlement_client_leg_done,
+                "operation_id": e.settlement_operation_id,
+                "status": e.status
+            })
+        })
     }
 }

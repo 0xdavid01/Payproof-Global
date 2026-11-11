@@ -2,9 +2,11 @@
 package com.example.payproof.controller;
 
 import com.example.payproof.dto.request.ConfirmEscrowRequest;
+import com.example.payproof.dto.request.ConfirmSplitActionRequest;
 import com.example.payproof.dto.request.CreateEscrowCaseRequest;
 import com.example.payproof.dto.request.CreateEscrowRequest;
 import com.example.payproof.dto.response.CreateEscrowResponse;
+import com.example.payproof.dto.response.DisputeProposalResponse;
 import com.example.payproof.dto.response.EscrowDetailsResponse;
 import com.example.payproof.dto.response.EscrowDisputeCaseResponse;
 import com.example.payproof.enums.EscrowCaseType;
@@ -184,5 +186,46 @@ public class EscrowController {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED, "Authenticated user not found"
                 ));
+    }
+
+    @GetMapping("/jobs/{jobId}/dispute-proposal")
+    public ResponseEntity<DisputeProposalResponse> getDisputeProposal(
+            @PathVariable String jobId,
+            @AuthenticationPrincipal CustomUserPrincipal principal) {
+        UserModel user = authenticatedUser(principal);
+        DisputeProposalResponse p = escrowQueryService.getDisputeProposal(jobId, user);
+        return p == null
+                ? ResponseEntity.<DisputeProposalResponse>noContent().build()
+                : ResponseEntity.ok(p);
+    }
+
+    @PostMapping("/jobs/{jobId}/dispute-proposal/accept")
+    public ResponseEntity<?> acceptSplit(
+            @PathVariable String jobId,
+            @Valid @RequestBody ConfirmSplitActionRequest req,
+            @AuthenticationPrincipal CustomUserPrincipal principal) {
+        UserModel user = authenticatedUser(principal);
+        submissionService.confirmSplitAcceptance(jobId, user, req.transactionHash());
+        return ResponseEntity.ok(Map.of("status", "accepted"));
+    }
+
+    @PostMapping("/jobs/{jobId}/dispute-proposal/reject")
+    public ResponseEntity<?> rejectSplit(
+            @PathVariable String jobId,
+            @Valid @RequestBody ConfirmSplitActionRequest req,
+            @AuthenticationPrincipal CustomUserPrincipal principal) {
+        UserModel user = authenticatedUser(principal);
+        submissionService.confirmSplitRejection(jobId, user, req.transactionHash(), req.reason());
+        return ResponseEntity.ok(Map.of("status", "rejected"));
+    }
+
+    @PostMapping("/jobs/{jobId}/dispute-proposal/revoke")
+    public ResponseEntity<?> revokeSplit(
+            @PathVariable String jobId,
+            @Valid @RequestBody ConfirmSplitActionRequest req,
+            @AuthenticationPrincipal CustomUserPrincipal principal) {
+        UserModel user = authenticatedUser(principal);
+        submissionService.confirmSplitRevoke(jobId, user, req.transactionHash());
+        return ResponseEntity.ok(Map.of("status", "revoked"));
     }
 }

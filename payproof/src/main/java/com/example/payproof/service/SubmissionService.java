@@ -608,4 +608,44 @@ public class SubmissionService {
             );
         }
     }
+    @Transactional
+    public void confirmSplitAcceptance(String jobId, UserModel requester, String transactionHash) {
+        JobModel job = jobRepository.findByIdForUpdate(jobId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found"));
+        requireParticipant(job, requester);
+        nearTransactionVerifier.verifySplitAcceptance(job, requester, transactionHash);
+        activityLogService.record(job, requester, "SPLIT_ACCEPTED",
+                "Accepted the dispute split proposal on NEAR.");
+    }
+
+    @Transactional
+    public void confirmSplitRejection(String jobId, UserModel requester,
+                                      String transactionHash, String reason) {
+        JobModel job = jobRepository.findByIdForUpdate(jobId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found"));
+        requireParticipant(job, requester);
+        nearTransactionVerifier.verifySplitRejection(job, requester, transactionHash, reason);
+        activityLogService.record(job, requester, "SPLIT_REJECTED",
+                "Rejected the dispute split proposal on NEAR.");
+    }
+
+    @Transactional
+    public void confirmSplitRevoke(String jobId, UserModel requester, String transactionHash) {
+        JobModel job = jobRepository.findByIdForUpdate(jobId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found"));
+        requireParticipant(job, requester);
+        nearTransactionVerifier.verifySplitRevoke(job, requester, transactionHash);
+        activityLogService.record(job, requester, "SPLIT_ACCEPTANCE_REVOKED",
+                "Revoked acceptance of the split proposal.");
+    }
+
+    private void requireParticipant(JobModel job, UserModel requester) {
+        boolean isClient = job.getClient().getUserId().equals(requester.getUserId());
+        boolean isFreelancer = job.getFreelancer() != null
+                && job.getFreelancer().getUserId().equals(requester.getUserId());
+        if (!isClient && !isFreelancer) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only project participants can perform this action");
+        }
+    }
 }

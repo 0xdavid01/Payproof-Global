@@ -34,6 +34,9 @@ public class NearTransactionVerifier {
     private static final String REFUND_REQUEST_METHOD = "request_refund";
     private static final BigInteger PLATFORM_FEE_BPS = BigInteger.valueOf(350);
     private static final BigInteger BASIS_POINTS = BigInteger.valueOf(10_000);
+    private static final String ACCEPT_METHOD = "accept_dispute_split";
+    private static final String REJECT_METHOD = "reject_dispute_split";
+    private static final String REVOKE_METHOD = "revoke_dispute_acceptance";
 
     private final ObjectMapper objectMapper;
     private final TokenAmountConverter tokenAmountConverter;
@@ -969,5 +972,217 @@ public class NearTransactionVerifier {
                 HttpStatus.SERVICE_UNAVAILABLE,
                 message
         );
+    }
+    public void verifySplitAcceptance(JobModel job, UserModel requester, String transactionHash) {
+        String escrowId = requireEscrowId(job);
+        String expectedSigner = requester.getRole() == UserRole.CLIENT
+                ? job.getEscrowCreationClientWallet()
+                : job.getEscrowCreationFreelancerWallet();
+        if (expectedSigner == null || expectedSigner.isBlank()) {
+            throw invalid("The requester's wallet is missing from the escrow reservation.");
+        }
+
+        JsonNode txResult = rpcCall("EXPERIMENTAL_tx_status", Map.of(
+                "tx_hash", transactionHash,
+                "sender_account_id", expectedSigner,
+                "wait_until", "FINAL"
+        ));
+        JsonNode transaction = txResult.path("transaction");
+        if (transaction.isMissingNode() || transaction.isNull()) {
+            throw unavailable("NEAR has not returned the acceptance transaction yet.");
+        }
+        if (!escrowContractId.equals(transaction.path("receiver_id").asString())) {
+            throw invalid("The acceptance transaction was sent to the wrong contract.");
+        }
+        if (!expectedSigner.equals(transaction.path("signer_id").asString())) {
+            throw invalid("The acceptance transaction signer does not match the linked wallet.");
+        }
+        JsonNode status = txResult.path("status");
+        if (status.has("Failure")) {
+            throw invalid("The NEAR acceptance transaction failed.");
+        }
+        if (!status.has("SuccessValue") && !status.has("SuccessReceiptId")) {
+            throw unavailable("The acceptance transaction has not reached a successful outcome.");
+        }
+
+        verifyFunctionCallMethod(transaction, escrowId, ACCEPT_METHOD);
+
+        JsonNode proposal = readProposal(escrowId);
+        if (proposal == null || proposal.isNull()) {
+            throw unavailable("The on-chain proposal has not been confirmed yet.");
+        }
+        boolean clientSide = requester.getRole() == UserRole.CLIENT;
+        boolean accepted = clientSide
+                ? proposal.path("client_accepted").asBoolean(false)
+                : proposal.path("freelancer_accepted").asBoolean(false);
+        if (!accepted) {
+            throw unavailable("The on-chain acceptance has not been confirmed yet.");
+        }
+    }
+
+    public void verifySplitRejection(JobModel job, UserModel requester, String transactionHash, String reason) {
+        String escrowId = requireEscrowId(job);
+        String expectedSigner = requester.getRole() == UserRole.CLIENT
+                ? job.getEscrowCreationClientWallet()
+                : job.getEscrowCreationFreelancerWallet();
+
+        JsonNode txResult = rpcCall("EXPERIMENTAL_tx_status", Map.of(
+                "tx_hash", transactionHash,
+                "sender_account_id", expectedSigner,
+                "wait_until", "FINAL"
+        ));
+        JsonNode transaction = txResult.path("transaction");
+        if (transaction.isMissingNode() || transaction.isNull()) {
+            throw unavailable("NEAR has not returned the rejection transaction yet.");
+        }
+        if (!escrowContractId.equals(transaction.path("receiver_id").asString())) {
+            throw invalid("The rejection transaction was sent to the wrong contract.");
+        }
+        if (!expectedSigner.equals(transaction.path("signer_id").asString())) {
+            throw invalid("The rejection transaction signer does not match the linked wallet.");
+        }
+        JsonNode status = txResult.path("status");
+        if (status.has("Failure")) {
+            throw invalid("The NEAR rejection transaction failed.");
+        }
+        if (!status.has("SuccessValue") && !status.has("SuccessReceiptId")) {
+            throw unavailable("The rejection transaction has not reached a successful outcome.");
+        }
+        verifyFunctionCallMethodAndReason(transaction, escrowId, REJECT_METHOD, reason);
+
+        JsonNode proposal = readProposal(escrowId);
+        if (proposal != null && !proposal.isNull()) {
+            throw unavailable("The on-chain proposal has not been cleared yet.");
+        }
+    }
+
+    public void verifySplitRevoke(JobModel job, UserModel requester, String transactionHash) {
+        String escrowId = requireEscrowId(job);
+        String expectedSigner = requester.getRole() == UserRole.CLIENT
+                ? job.getEscrowCreationClientWallet()
+                : job.getEscrowCreationFreelancerWallet();
+
+        JsonNode txResult = rpcCall("EXPERIMENTAL_tx_status", Map.of(
+                "tx_hash", transactionHash,
+                "sender_account_id", expectedSigner,
+                "wait_until", "FINAL"
+        ));
+        JsonNode transaction = txResult.path("transaction");
+        if (transaction.isMissingNode() || transaction.isNull()) {
+            throw unavailable("NEAR has not returned the revoke transaction yet.");
+        }
+        if (!escrowContractId.equals(transaction.path("receiver_id").asString())) {
+            throw invalid("The revoke transaction was sent to the wrong contract.");
+        }
+        if (!expectedSigner.equals(transaction.path("signer_id").asString())) {
+            throw invalid("The revoke transaction signer does not match the linked wallet.");
+        }
+        JsonNode status = txResult.path("status");
+        if (status.has("Failure")) {
+            throw invalid("The NEAR revoke transaction failed.");
+        }
+        if (!status.has("SuccessValue") && !status.has("SuccessReceiptId")) {
+            throw unavailable("The revoke transaction has not reached a successful outcome.");
+        }
+        verifyFunctionCallMethod(transaction, escrowId, REVOKE_METHOD);
+
+        JsonNode proposal = readProposal(escrowId);
+        if (proposal == null || proposal.isNull()) {
+            throw unavailable("The on-chain proposal has not been confirmed yet.");
+        }
+        boolean clientSide = requester.getRole() == UserRole.CLIENT;
+        boolean accepted = clientSide
+                ? proposal.path("client_accepted").asBoolean(false)
+                : proposal.path("freelancer_accepted").asBoolean(false);
+        if (accepted) {
+            throw unavailable("The on-chain revoke has not been confirmed yet.");
+        }
+    }
+
+// ---------- helpers ----------
+
+    private String requireEscrowId(JobModel job) {
+        String escrowId = job != null ? job.getEscrowId() : null;
+        if (job == null || escrowId == null || escrowId.isBlank()) {
+            throw invalid("The job does not have a confirmed escrow.");
+        }
+        return escrowId;
+    }
+
+    private void verifyFunctionCallMethod(JsonNode transaction, String escrowId, String method) {
+        JsonNode actions = transaction.path("actions");
+        if (!actions.isArray()) {
+            throw invalid("The transaction contains no readable actions.");
+        }
+        for (JsonNode action : actions) {
+            JsonNode fn = action.path("FunctionCall");
+            if (fn.isMissingNode() || fn.isNull()) continue;
+            if (!method.equals(fn.path("method_name").asString())) continue;
+
+            JsonNode args;
+            try {
+                args = objectMapper.readTree(Base64.getDecoder().decode(fn.path("args").asString()));
+            } catch (Exception e) {
+                throw invalid("The transaction arguments are invalid.");
+            }
+            if (!escrowId.equals(args.path("escrow_id").asString())) {
+                throw invalid("The transaction contains a different escrow ID.");
+            }
+            if (!"1".equals(fn.path("deposit").asString())) {
+                throw invalid("The transaction must attach exactly one yoctoNEAR.");
+            }
+            return;
+        }
+        throw invalid("The transaction did not call " + method + ".");
+    }
+
+    private void verifyFunctionCallMethodAndReason(JsonNode transaction, String escrowId,
+                                                   String method, String reason) {
+        JsonNode actions = transaction.path("actions");
+        if (!actions.isArray()) throw invalid("The transaction contains no readable actions.");
+        for (JsonNode action : actions) {
+            JsonNode fn = action.path("FunctionCall");
+            if (fn.isMissingNode() || fn.isNull()) continue;
+            if (!method.equals(fn.path("method_name").asString())) continue;
+
+            JsonNode args;
+            try {
+                args = objectMapper.readTree(Base64.getDecoder().decode(fn.path("args").asString()));
+            } catch (Exception e) {
+                throw invalid("The transaction arguments are invalid.");
+            }
+            if (!escrowId.equals(args.path("escrow_id").asString())
+                    || !reason.equals(args.path("reason").asString())) {
+                throw invalid("The transaction does not match this request.");
+            }
+            if (!"1".equals(fn.path("deposit").asString())) {
+                throw invalid("The transaction must attach exactly one yoctoNEAR.");
+            }
+            return;
+        }
+        throw invalid("The transaction did not call " + method + ".");
+    }
+
+    public JsonNode readProposal(String escrowId) {
+        String args = objectMapper.writeValueAsString(Map.of("escrow_id", escrowId));
+        String encodedArgs = Base64.getEncoder()
+                .encodeToString(args.getBytes(StandardCharsets.UTF_8));
+        JsonNode result = rpcCall("query", Map.of(
+                "request_type", "call_function",
+                "finality", "final",
+                "account_id", escrowContractId,
+                "method_name", "get_dispute_proposal",
+                "args_base64", encodedArgs
+        ));
+        JsonNode bytes = result.path("result");
+        if (!bytes.isArray()) return null;
+        byte[] data = new byte[bytes.size()];
+        for (int i = 0; i < bytes.size(); i++) data[i] = (byte) bytes.get(i).asInt();
+        if (data.length == 0) return null;
+        try {
+            return objectMapper.readTree(new String(data, StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

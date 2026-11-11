@@ -1,0 +1,101 @@
+.split-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 14px 0 8px;
+}
+
+.split-tile {
+  border: 1px solid #d9e3dd;
+  border-radius: 14px;
+  padding: 14px;
+  background: #f7faf8;
+}
+
+.split-tile small {
+  display: block;
+  color: #6b7d73;
+  margin-bottom: 4px;
+}
+
+.split-tile strong {
+  font-size: 18px;
+  word-break: break-word;
+}
+
+.split-tile.is-you {
+  border-color: rgb(23, 107, 77);
+  background: #e6f0eb;
+}
+
+.split-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 12px 0;
+}
+
+.split-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #6b7d73;
+}
+
+.split-flag.yes {
+  color: rgb(23, 107, 77);
+}
+
+.split-history {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid #e6f0eb;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.split-banner {
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.split-banner-green {
+  background: #e6f0eb;
+  color: rgb(23, 107, 77);
+}
+
+.split-banner-amber {
+  background: #fdf0d5;
+  color: #b7791f;
+}
+
+.split-connect {
+  padding: 14px;
+  border: 1px dashed #d9e3dd;
+  border-radius: 12px;
+}
+
+.split-connect p {
+  margin: 0 0 10px;
+}
+
+.split-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: rgb(23, 107, 77);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+@media (max-width: 640px) {
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -24,7 +24,7 @@ The codebase contains a React application, a separate React marketing site, a Ja
 
 > **Stablecoin status:** The contract accepts USDT/USDC via NEP-141 `ft_transfer_call`. A live testnet transaction has funded an escrow with 10.35 USDC ([tx BaQ5fXPE4jrmh8h4rj6UpXBdMi5jQjznNbNPLxTVCzZk](https://testnet.nearblocks.io/txns/BaQ5fXPE4jrmh8h4rj6UpXBdMi5jQjznNbNPLxTVCzZk)). The frontend prepares the funding transaction and the backend verifier now branches on escrow status to confirm NEAR and NEP-141 funding. NEAR escrow funding is fully end-to-end; USDC funding is verified on-chain, and the release step is retried via `retry_failed_settlement` if a payout fails.
 
-> **Implementation note:** This README distinguishes implemented behavior from partial integrations and known gaps. In particular, AI currently extracts a checklist from a project brief; it does not assess submitted work or make payment decisions.
+> **Implementation note:** This README distinguishes implemented behavior from partial integrations and known gaps. In particular, AI currently extracts a checklist from a project brief; it does not assess submitted work or make payment decisions (why).
 
 ## Contents
 
@@ -40,6 +40,7 @@ The codebase contains a React application, a separate React marketing site, a Ja
 - [REST API](#rest-api)
 - [NEAR smart contracts](#near-smart-contracts)
 - [AI checklist generation](#ai-checklist-generation)
+  - [Why AI does not review submitted work against the checklist](#why-ai-does-not-review-submitted-work-against-the-checklist)
 - [Database and data model](#database-and-data-model)
 - [Testing and validation](#testing-and-validation)
 - [Deployment](#deployment)
@@ -814,6 +815,18 @@ These workflows depend on correctly configured repository variables/secrets. The
 5. The backend parses the response, checks the list structure and 1–50 item count, validates nonblank condition text, and creates `JobRequirement` objects with `isDone=false`.
 6. The client reviews and approves or edits the checklist before it becomes the project's approved scope.
 
+### Why AI does not review submitted work against the checklist
+
+We deliberately limit AI to checklist generation, not evaluation. This is a design choice, not an unfinished feature. Releasing or withholding escrow funds is a consequential action, and we do not want an automated system making that call. The reasons:
+
+1. **Payment decisions must stay human.** An AI judgment that can delay or block payment creates unacceptable risk for freelancers — false negatives, misinterpreted context, or disagreements over style can all become unpaid work.
+2. **Accountability stays with the client.** The person who defined the requirements and funded the escrow remains responsible for accepting or rejecting the work. AI should not become a convenient shield for subjective decisions.
+3. **Transparency and dispute readiness.** Every acceptance or rejection needs a clear human rationale that both parties can refer to later. Automated scores or pass/fail labels make disputes harder, not easier.
+4. **Current model limitations.** Even strong models still hallucinate requirements, miss nuance, or over-index on surface-level details. We prefer not to put an imperfect judge between a freelancer and their payment.
+5. **Trust model alignment.** PayProof is non-custodial and keeps the server out of key material. Extending that philosophy, we also keep automated systems out of the final payment decision.
+
+The AI checklist is a productivity aid for the client, not a gatekeeper. Final review — and the on-chain `approve_work` signature — remain exclusively human.
+
 No confidence score, multi-agent review, submitted-file analysis, evidence comparison, or AI-driven approval/payment action is implemented. The prompt's instructions are not a guarantee of correct model output. PRD text is sent to an external AI provider; only send documents permitted by your privacy and provider policies. The service logs raw response content at debug level, so use care with log access and log-level configuration.
 
 ## Database and data model
@@ -977,6 +990,7 @@ These are deployment recommendations, not claims that a hosted production deploy
 - **Secrets:** database passwords, OAuth credentials, R2 keys, Resend/DeepSeek API keys, and NEAR signing keys must be managed outside source control. Frontend `VITE_*` values are public.
 - **Contract controls:** escrow starts paused/unconfigured and relies on admin configuration and resolver identity. The test token has unrestricted minting. Verify deployed contract code/state and admin key custody before using funds.
 - **Configuration caveat:** `server.error.include-message=always` and `server.error.include-stacktrace=always` are set in the checked-in application properties. Review and override these settings for production so internal exception detail is not disclosed in API errors.
+- **AI scope:** the model generates checklist items only; it never reviews deliverables or authorizes payment. Final acceptance requires a human client review plus an on-chain `approve_work` signature.
 
 This section summarizes source-level controls and operational risks; it is not an independent security audit or assurance that the application is production-ready.
 
@@ -987,7 +1001,7 @@ This section summarizes source-level controls and operational risks; it is not a
 1. **Stablecoin funding is verified; payout requires retry on failure:** USDC funding is verified on-chain ([BaQ5fXPE4...](https://testnet.nearblocks.io/txns/BaQ5fXPE4jrmh8h4rj6UpXBdMi5jQjznNbNPLxTVCzZk)). If a payout to the freelancer fails (for example because the receiver is not registered with the token contract), the escrow moves to `SettlementFailed` and the frontend must call `retry_failed_settlement` (now wired through the status-aware release method). Recipient wallets must be registered with the token contract via `storage_deposit` before receiving USDC.
 2. **Platform fee configuration must stay synchronized:** the backend and frontend currently calculate a fixed 3.5% fee, while the admin contract can configure a different fee up to 10%. A different on-chain rate will make funding transactions fail until the application and contract agree.
 3. **Escrow confirmation payload differs:** backend `ConfirmEscrowRequest` declares only `jobId` and `transactionHash`; frontend `confirmEscrow` also sends `escrowId` and `network`. Keep the request/response contract aligned rather than relying on unknown-field behavior.
-4. **No AI deliverable verification:** DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
+4. **No AI deliverable** verification: DeepSeek is used to generate PRD checklist items only. There is no implemented multi-agent evaluator, confidence score, or AI-triggered payment.
 5. **Dispute resolution/admin UI gap:** participant dispute and client refund-request submission are exposed and logged, but the configured resolver's release/refund decision, failed-settlement retry controls, admin review endpoint, and admin dashboard are not exposed through the application.
 6. **Development proxy defaults to hosted API:** unless `VITE_BACKEND_ORIGIN` is set, Vite forwards requests to the backend URL in `vite.config.js`.
 7. **Database migrations:** no Flyway/Liquibase or versioned migration scripts were found; Hibernate uses `ddl-auto=update`.

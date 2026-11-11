@@ -5,6 +5,7 @@ import {
   Folder,
   FileCheck,
   Wallet,
+  Scale,
   Clock,
   Bell,
   ChevronDown,
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { to: "/projects", label: "Projects", icon: Folder },
   { to: "/agreements", label: "Agreements", icon: FileCheck },
   { to: "/escrow", label: "Escrow", icon: Wallet },
+  { to: "/disputes", label: "Disputes", icon: Scale },
   { to: "/activity", label: "Activity", icon: Clock },
 ];
 

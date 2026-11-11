@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowRight,
@@ -13,6 +13,7 @@ import Card from "../components/Card.jsx";
 import Button from "../components/Button.jsx";
 import FinancialTermsCard from "../components/FinancialTermsCard.jsx";
 import ProjectChecklist from "../components/ProjectChecklist.jsx";
+import DisputeProposalPanel from "../components/DisputeProposalPanel.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useWallet } from "../context/WalletContext.jsx";
 import {
@@ -67,9 +68,11 @@ export default function ProjectDetail() {
   const [caseBusy, setCaseBusy] = useState("");
   const [pendingCaseTx, setPendingCaseTx] = useState(() => readPendingCaseTx(jobId));
   const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const [splitSeen, setSplitSeen] = useState(false);
+  const splitRefreshed = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError("");
 
     try {
@@ -107,12 +110,28 @@ export default function ProjectDetail() {
     setPendingCaseTx(saved);
     setDisputeCase(null);
     setCaseReason(saved?.reason || "");
+    setSplitSeen(false);
+    splitRefreshed.current = false;
   }, [jobId]);
+
+  // Keep the split panel on screen after the project leaves DISPUTED (for the settled banner).
+  useEffect(() => {
+    if (String(job?.raw?.status || "").toUpperCase() === "DISPUTED") {
+      setSplitSeen(true);
+    }
+  }, [job]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // Runs once when the escrow reaches Released, so the project status refreshes without a flicker.
+  const handleSplitSettled = useCallback(() => {
+    if (splitRefreshed.current) return;
+    splitRefreshed.current = true;
+    load({ silent: true });
+  }, [load]);
 
   const handleAccept = async () => {
     setError("");
@@ -662,6 +681,10 @@ export default function ProjectDetail() {
                 </div>
               )}
             </Card>
+          )}
+
+          {job.escrowConfirmed && !declined && (projectDisputed || splitSeen) && (
+            <DisputeProposalPanel job={job} onSettled={handleSplitSettled} />
           )}
         </div>
 

@@ -6,6 +6,8 @@ import Register from "./pages/Register.jsx";
 import Projects from "./pages/Projects.jsx";
 import CreateProject from "./pages/CreateProject.jsx";
 import ProjectDetail from "./pages/ProjectDetail.jsx";
+import Dispute from "./pages/Dispute.jsx";
+import Disputes from "./pages/Disputes.jsx";
 import SubmitWork from "./pages/SubmitWork.jsx";
 import SubmissionVersion from "./pages/SubmissionVersion.jsx";
 import Agreements from "./pages/Agreements.jsx";
@@ -33,6 +35,7 @@ export default function App() {
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/new" element={<CreateProject />} />
         <Route path="/projects/:jobId" element={<ProjectDetail />} />
+        <Route path="/projects/:jobId/dispute" element={<Dispute />} />
         <Route path="/projects/:jobId/submission" element={<SubmitWork />} />
         <Route path="/projects/:jobId/receipt" element={<PaymentReceipt />} />
         <Route
@@ -43,6 +46,7 @@ export default function App() {
         <Route path="/agreements/:jobId" element={<AgreementReview />} />
         <Route path="/escrow" element={<Escrow />} />
         <Route path="/escrow/:jobId" element={<EscrowFunding />} />
+        <Route path="/disputes" element={<Disputes />} />
         <Route path="/activity" element={<Activity />} />
       </Route>
 
